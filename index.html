@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chord Chance</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <span class="logo">Chord Chance</span>
+      <button id="settings-btn" title="Settings" aria-label="Open settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </header>
+
+    <main>
+      <div id="card-wrap">
+        <div id="card" class="state-neutral">
+          <div id="note-root"></div>
+          <div id="chord-suffix"></div>
+          <div id="enharmonic"></div>
+        </div>
+        <div id="feedback-label"></div>
+      </div>
+
+      <div id="progress-track">
+        <div id="progress-bar"></div>
+      </div>
+
+      <div id="controls">
+        <button id="prev-btn" title="Previous">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+        </button>
+        <button id="play-pause-btn" title="Play/Pause">
+          <svg id="icon-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+          <svg id="icon-play" viewBox="0 0 24 24" fill="currentColor" class="hidden"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button id="next-btn" title="Next">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm2.5-6 5.5 4V8l-5.5 4zM16 6v12h2V6h-2z"/></svg>
+        </button>
+      </div>
+
+      <div id="audio-row">
+        <button id="mic-btn" class="mic-off">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/>
+            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+          </svg>
+          <span>Enable audio feedback</span>
+        </button>
+        <div id="audio-level">
+          <div id="audio-bar"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Settings overlay -->
+    <div id="settings-overlay" class="hidden" role="dialog" aria-label="Settings">
+      <div id="settings-panel">
+        <div id="settings-header">
+          <h2>Settings</h2>
+          <button id="close-settings" aria-label="Close settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <section class="s-section">
+          <h3>Mode</h3>
+          <div class="pill-toggle">
+            <button class="pill active" data-mode="note">Note</button>
+            <button class="pill" data-mode="chord">Chord</button>
+          </div>
+        </section>
+
+        <section class="s-section">
+          <h3>Interval <span id="interval-val">10s</span></h3>
+          <input type="range" id="interval-slider" min="2" max="120" value="10" step="1" />
+          <div class="range-labels"><span>2s</span><span>120s</span></div>
+        </section>
+
+        <section class="s-section" id="note-section">
+          <h3>Root Notes</h3>
+          <div id="note-checks" class="check-grid"></div>
+          <div class="accidental-row">
+            <label class="check-label">
+              <input type="checkbox" id="cb-sharps" checked />
+              <span class="check-box"></span>
+              Sharps (♯)
+            </label>
+            <label class="check-label">
+              <input type="checkbox" id="cb-flats" checked />
+              <span class="check-box"></span>
+              Flats (♭)
+            </label>
+          </div>
+        </section>
+
+        <section class="s-section" id="chord-section" style="display:none">
+          <h3>Chord Types</h3>
+          <div id="chord-checks" class="check-grid"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
