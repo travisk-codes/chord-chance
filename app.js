@@ -1,253 +1,145 @@
-/* ═══════════════════════════════════════════════════════════
-   Chord Chance – main application
-   ═══════════════════════════════════════════════════════════ */
+// ─── DATA ──────────────────────────────────────────────────────────────────
 
-// ── Music Data ────────────────────────────────────────────────
+const ROOT_NOTES = ['C','D','E','F','G','A','B'];
 
-const NATURALS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+const CHORD_TYPES = [
+  { val: 'maj',    label: 'Major',      symbol: 'Δ',     intervals: [0,4,7] },
+  { val: 'min',    label: 'Minor',      symbol: 'm',     intervals: [0,3,7] },
+  { val: '7',      label: 'Dom 7',      symbol: '7',     intervals: [0,4,7,10] },
+  { val: 'maj7',   label: 'Major 7',    symbol: 'maj7',  intervals: [0,4,7,11] },
+  { val: 'min7',   label: 'Minor 7',    symbol: 'm7',    intervals: [0,3,7,10] },
+  { val: 'min7b5', label: 'Half Dim',   symbol: 'm7♭5',  intervals: [0,3,6,10] },
+  { val: 'dim',    label: 'Diminished', symbol: 'dim',   intervals: [0,3,6] },
+  { val: 'dim7',   label: 'Dim 7',      symbol: 'dim7',  intervals: [0,3,6,9] },
+  { val: 'aug',    label: 'Augmented',  symbol: 'aug',   intervals: [0,4,8] },
+  { val: 'sus2',   label: 'Sus 2',      symbol: 'sus2',  intervals: [0,2,7] },
+  { val: 'sus4',   label: 'Sus 4',      symbol: 'sus4',  intervals: [0,5,7] },
+  { val: 'add9',   label: 'Add 9',      symbol: 'add9',  intervals: [0,2,4,7] },
+  { val: '9',      label: 'Dom 9',      symbol: '9',     intervals: [0,4,7,10,14] },
+  { val: 'maj9',   label: 'Major 9',    symbol: 'maj9',  intervals: [0,4,7,11,14] },
+  { val: 'min9',   label: 'Minor 9',    symbol: 'm9',    intervals: [0,3,7,10,14] },
+  { val: '6',      label: 'Major 6',    symbol: '6',     intervals: [0,4,7,9] },
+  { val: 'min6',   label: 'Minor 6',    symbol: 'm6',    intervals: [0,3,7,9] },
+  { val: '11',     label: 'Dom 11',     symbol: '11',    intervals: [0,4,7,10,14,17] },
+  { val: 'maj11',  label: 'Major 11',   symbol: 'maj11', intervals: [0,4,7,11,14,17] },
+  { val: '13',     label: 'Dom 13',     symbol: '13',    intervals: [0,4,7,10,14,21] },
+];
 
-// Every chromatic pitch class indexed 0-11
+// Semitone maps for audio detection
 const SEMITONE_TO_SHARP = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
-const SEMITONE_TO_FLAT  = ['C','D♭','D','E♭','E','F','G♭','G','A♭','A','B♭','B'];
-
 const NOTE_TO_SEMITONE = {
-  'C':0,'C♯':1,'D♭':1,'D':2,'D♯':3,'E♭':3,
-  'E':4,'F':5,'F♯':6,'G♭':6,'G':7,'G♯':8,
-  'A♭':8,'A':9,'A♯':10,'B♭':10,'B':11,
+  'C':0,'C#':1,'D':2,'D#':3,'E':4,'F':5,'F#':6,'G':7,'G#':8,'A':9,'A#':10,'B':11,
+  'Db':1,'Eb':3,'Gb':6,'Ab':8,'Bb':10,
 };
 
-// Enharmonic pairs shown beneath accidental notes
+// Enharmonic equivalents for accidental notes
 const ENHARMONIC = {
-  'C♯':'D♭','D♭':'C♯','D♯':'E♭','E♭':'D♯',
-  'F♯':'G♭','G♭':'F♯','G♯':'A♭','A♭':'G♯',
-  'A♯':'B♭','B♭':'A♯',
+  'C#':'D♭', 'Db':'C♯', 'D#':'E♭', 'Eb':'D♯',
+  'F#':'G♭', 'Gb':'F♯', 'G#':'A♭', 'Ab':'G♯',
+  'A#':'B♭', 'Bb':'A♯',
 };
 
-// All sharps & flats (semitones 1,3,6,8,10 have both)
-const SHARPS = ['C♯','D♯','F♯','G♯','A♯'];
-const FLATS  = ['D♭','E♭','G♭','A♭','B♭'];
-
-// Chord definitions: intervals from root (semitones), display suffix
-const CHORD_DEFS = {
-  'maj':   { intervals:[0,4,7],       suffix:''       },
-  'min':   { intervals:[0,3,7],       suffix:'m'      },
-  '7':     { intervals:[0,4,7,10],    suffix:'7'      },
-  'maj7':  { intervals:[0,4,7,11],    suffix:'maj7'   },
-  'min7':  { intervals:[0,3,7,10],    suffix:'m7'     },
-  'sus2':  { intervals:[0,2,7],       suffix:'sus2'   },
-  'sus4':  { intervals:[0,5,7],       suffix:'sus4'   },
-  'dim':   { intervals:[0,3,6],       suffix:'dim'    },
-  'aug':   { intervals:[0,4,8],       suffix:'aug'    },
-  '5':     { intervals:[0,7],         suffix:'5'      },
-  'add9':  { intervals:[0,2,4,7],     suffix:'add9'   },
-  '6':     { intervals:[0,4,7,9],     suffix:'6'      },
-  'min6':  { intervals:[0,3,7,9],     suffix:'m6'     },
-  'dim7':  { intervals:[0,3,6,9],     suffix:'dim7'   },
-  'm7b5':  { intervals:[0,3,6,10],    suffix:'m7♭5'   },
-};
-
-// ── State ──────────────────────────────────────────────────────
+// ─── STATE ─────────────────────────────────────────────────────────────────
 
 const state = {
-  mode:         'note',      // 'note' | 'chord'
-  interval:     10,          // seconds
-  playing:      true,
-  naturals:     new Set(NATURALS),
-  sharps:       true,
-  flats:        true,
-  chordTypes:   new Set(Object.keys(CHORD_DEFS)),
-
-  current:      null,        // { root, chordType } or { note }
-  timerStart:   0,
-  animFrame:    null,
-  timeoutId:    null,
-
-  // Audio
-  micActive:    false,
-  audioCtx:     null,
-  analyser:     null,
-  micStream:    null,
-  audioLoop:    null,
-  feedbackState:'neutral',   // 'neutral'|'correct'|'wrong'
+  mode: 'note',
+  playing: false,
+  interval: 5,
+  activeNotes: new Set(ROOT_NOTES),
+  activeAcc: new Set(['natural','sharp','flat']),
+  activeChords: new Set(CHORD_TYPES.map(c => c.val)),
+  current: { root: 'C', acc: '', chord: null },
+  // Audio feedback
+  micActive: false,
+  audioCtx: null,
+  analyser: null,
+  micStream: null,
+  audioLoop: null,
+  feedbackState: 'neutral',
 };
 
-// ── DOM References ─────────────────────────────────────────────
+// ─── DERIVED ───────────────────────────────────────────────────────────────
 
-const $ = id => document.getElementById(id);
-const card           = $('card');
-const noteRoot       = $('note-root');
-const chordSuffix    = $('chord-suffix');
-const enharmonicEl   = $('enharmonic');
-const feedbackLabel  = $('feedback-label');
-const progressBar    = $('progress-bar');
-const iconPause      = $('icon-pause');
-const iconPlay       = $('icon-play');
-const intervalSlider = $('interval-slider');
-const intervalVal    = $('interval-val');
-const cbSharps       = $('cb-sharps');
-const cbFlats        = $('cb-flats');
-const audioLevel     = $('audio-level');
-const audioBar       = $('audio-bar');
-const settingsOverlay= $('settings-overlay');
+const SHARP_NOTES = new Set(['C','D','F','G','A']);
+const FLAT_NOTES  = new Set(['D','E','G','A','B']);
 
-// ── Note Pool ─────────────────────────────────────────────────
-
-function buildNotePool() {
+function buildPool() {
   const pool = [];
-  for (const n of NATURALS) {
-    if (state.naturals.has(n)) pool.push(n);
-  }
-  if (state.sharps) {
-    for (const n of SHARPS) {
-      // include if the natural root of the sharp is selected
-      // e.g. C♯ → root C; D♯ → root D etc.
-      const natural = n[0];
-      if (state.naturals.has(natural)) pool.push(n);
-    }
-  }
-  if (state.flats) {
-    for (const n of FLATS) {
-      // E♭ → root E, etc.
-      const natural = n[0];
-      if (state.naturals.has(natural)) pool.push(n);
-    }
-  }
-  return pool.length ? pool : ['C'];
-}
-
-function buildChordPool() {
-  const rootPool = buildNotePool();
-  const types    = [...state.chordTypes];
-  if (!types.length) return [{ root:'C', type:'maj' }];
-  const pool = [];
-  for (const root of rootPool) {
-    for (const type of types) {
-      pool.push({ root, type });
-    }
+  for (const note of ROOT_NOTES) {
+    if (!state.activeNotes.has(note)) continue;
+    if (state.activeAcc.has('natural')) pool.push({ root: note, acc: '' });
+    if (state.activeAcc.has('sharp') && SHARP_NOTES.has(note)) pool.push({ root: note, acc: '#' });
+    if (state.activeAcc.has('flat')  && FLAT_NOTES.has(note))  pool.push({ root: note, acc: 'b' });
   }
   return pool;
 }
 
-// ── Pick Random ───────────────────────────────────────────────
-
-function pickRandom() {
-  if (state.mode === 'note') {
-    const pool = buildNotePool();
-    let note;
-    do { note = pool[Math.floor(Math.random() * pool.length)]; }
-    while (pool.length > 1 && state.current?.note === note);
-    state.current = { note };
-  } else {
-    const pool = buildChordPool();
-    let pick;
-    do { pick = pool[Math.floor(Math.random() * pool.length)]; }
-    while (pool.length > 1 &&
-           state.current?.root === pick.root &&
-           state.current?.type === pick.type);
-    state.current = { root: pick.root, type: pick.type };
-  }
+function randomFrom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// ── Display ───────────────────────────────────────────────────
+function nextItem(avoidCurrent = true) {
+  const pool = buildPool();
+  if (!pool.length) return null;
+  const chordPool = [...state.activeChords];
+  if (state.mode === 'chord' && !chordPool.length) return null;
 
-function updateDisplay() {
-  // trigger animation
-  card.classList.remove('note-change');
-  void card.offsetWidth; // reflow
-  card.classList.add('note-change');
+  let candidate;
+  let tries = 0;
+  do {
+    candidate = randomFrom(pool);
+    tries++;
+  } while (avoidCurrent && tries < 8 && candidate.root === state.current.root && candidate.acc === state.current.acc);
 
-  if (state.mode === 'note') {
-    noteRoot.textContent    = state.current.note;
-    chordSuffix.textContent = '';
-    enharmonicEl.textContent = ENHARMONIC[state.current.note]
-      ? `= ${ENHARMONIC[state.current.note]}`
-      : '';
-  } else {
-    const def = CHORD_DEFS[state.current.type];
-    noteRoot.textContent    = state.current.root;
-    chordSuffix.textContent = def.suffix;
-    enharmonicEl.textContent = ENHARMONIC[state.current.root]
-      ? `${ENHARMONIC[state.current.root]}${def.suffix}`
-      : '';
+  let chord = null;
+  if (state.mode === 'chord') {
+    let chordTries = 0;
+    do {
+      chord = randomFrom(chordPool);
+      chordTries++;
+    } while (avoidCurrent && chordTries < 8 && chord === state.current.chord);
   }
 
-  setCardState('neutral');
+  return { root: candidate.root, acc: candidate.acc, chord };
 }
 
-function setCardState(s) {
-  state.feedbackState = s;
-  card.className = `state-${s}`;
-  const labels = { neutral:'', correct:'✓ Correct!', wrong:'✗ Keep trying…' };
-  feedbackLabel.textContent = labels[s] ?? '';
-  feedbackLabel.style.color =
-    s === 'correct' ? 'var(--correct)' :
-    s === 'wrong'   ? 'var(--wrong)'   : 'var(--text-muted)';
-  progressBar.style.background =
-    s === 'correct' ? 'var(--correct)' :
-    s === 'wrong'   ? 'var(--wrong)'   : 'var(--accent)';
-}
+// ─── AUDIO BEEP ────────────────────────────────────────────────────────────
 
-// ── Timer ─────────────────────────────────────────────────────
+let beepCtx = null;
 
-function startTimer() {
-  clearTimeout(state.timeoutId);
-  cancelAnimationFrame(state.animFrame);
-  state.timerStart = performance.now();
-
-  function tick() {
-    if (!state.playing) return;
-    const elapsed = (performance.now() - state.timerStart) / 1000;
-    const frac    = Math.min(elapsed / state.interval, 1);
-    progressBar.style.transform = `scaleX(${1 - frac})`;
-    if (frac < 1) {
-      state.animFrame = requestAnimationFrame(tick);
+function playBeep() {
+  try {
+    if (!beepCtx) {
+      beepCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
-  }
-  tick();
-
-  state.timeoutId = setTimeout(() => {
-    if (state.playing) advance();
-  }, state.interval * 1000);
-}
-
-function stopTimer() {
-  clearTimeout(state.timeoutId);
-  cancelAnimationFrame(state.animFrame);
-}
-
-function advance() {
-  pickRandom();
-  updateDisplay();
-  if (state.playing) startTimer();
-}
-
-function setPlaying(val) {
-  state.playing = val;
-  iconPause.classList.toggle('hidden', !val);
-  iconPlay.classList.toggle('hidden',  val);
-  if (val) {
-    state.timerStart = performance.now();
-    startTimer();
-  } else {
-    stopTimer();
-    progressBar.style.transform = 'scaleX(1)';
+    const now = beepCtx.currentTime;
+    const oscillator = beepCtx.createOscillator();
+    const gain = beepCtx.createGain();
+    oscillator.connect(gain);
+    gain.connect(beepCtx.destination);
+    oscillator.type = 'sine';
+    oscillator.frequency.value = 880;
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.00001, now + 0.15);
+    oscillator.start(now);
+    oscillator.stop(now + 0.15);
+    if (beepCtx.state === 'suspended') beepCtx.resume();
+  } catch (e) {
+    console.warn('Audio not supported', e);
   }
 }
 
-// ── Audio Feedback ────────────────────────────────────────────
+// ─── AUDIO FEEDBACK (Microphone) ───────────────────────────────────────────
 
-// Autocorrelation pitch detector (YIN-like)
 function detectPitch(floatData, sampleRate) {
   const n = floatData.length;
   const half = Math.floor(n / 2);
 
-  // RMS check – silence
   let rms = 0;
   for (let i = 0; i < n; i++) rms += floatData[i] * floatData[i];
   rms = Math.sqrt(rms / n);
   if (rms < 0.008) return null;
 
-  // Autocorrelation
   const corr = new Float32Array(half);
   for (let lag = 0; lag < half; lag++) {
     let sum = 0;
@@ -255,7 +147,6 @@ function detectPitch(floatData, sampleRate) {
     corr[lag] = sum;
   }
 
-  // Find first peak after initial drop
   let start = 1;
   while (start < half - 1 && corr[start] > corr[start + 1]) start++;
 
@@ -264,49 +155,44 @@ function detectPitch(floatData, sampleRate) {
     if (corr[i] > bestVal) { bestVal = corr[i]; bestLag = i; }
   }
 
-  if (bestVal / corr[0] < 0.4) return null; // weak correlation
+  if (bestVal / corr[0] < 0.4) return null;
 
-  // Parabolic interpolation for sub-sample accuracy
-  const x0 = bestLag > 0     ? corr[bestLag - 1] : corr[bestLag];
+  const x0 = bestLag > 0 ? corr[bestLag - 1] : corr[bestLag];
   const x2 = bestLag < half - 1 ? corr[bestLag + 1] : corr[bestLag];
   const refinedLag = bestLag + (x2 - x0) / (2 * (2 * corr[bestLag] - x0 - x2) || 1);
   return sampleRate / refinedLag;
 }
 
-// Build a chroma vector from FFT magnitude data
 function buildChroma(freqData, sampleRate, fftSize) {
   const chroma = new Float32Array(12);
-  const binHz  = sampleRate / fftSize;
+  const binHz = sampleRate / fftSize;
   for (let b = 1; b < freqData.length; b++) {
     const freq = b * binHz;
     if (freq < 60 || freq > 5000) continue;
-    const midi  = 12 * Math.log2(freq / 440) + 69;
-    const pc    = ((Math.round(midi) % 12) + 12) % 12;
-    // freqData is 0-255 (byte); linearise
+    const midi = 12 * Math.log2(freq / 440) + 69;
+    const pc = ((Math.round(midi) % 12) + 12) % 12;
     const power = Math.pow(10, (freqData[b] - 255) / 20);
     chroma[pc] += power;
   }
-  // Normalise
   const max = Math.max(...chroma, 1e-9);
   for (let i = 0; i < 12; i++) chroma[i] /= max;
   return chroma;
 }
 
-function freqToNoteName(freq) {
-  const midi  = Math.round(12 * Math.log2(freq / 440) + 69);
-  return SEMITONE_TO_SHARP[((midi % 12) + 12) % 12];
+function currentNoteName() {
+  return state.current.root + (state.current.acc === '#' ? '#' : state.current.acc === 'b' ? 'b' : '');
 }
 
 function targetSemitone() {
-  const note = state.mode === 'note' ? state.current.note : state.current.root;
-  return NOTE_TO_SEMITONE[note] ?? 0;
+  return NOTE_TO_SEMITONE[currentNoteName()] ?? 0;
 }
 
 function expectedChromaSet() {
   const rootSt = targetSemitone();
   if (state.mode === 'note') return new Set([rootSt]);
-  const ints = CHORD_DEFS[state.current.type]?.intervals ?? [0];
-  return new Set(ints.map(i => (rootSt + i) % 12));
+  const ct = CHORD_TYPES.find(c => c.val === state.current.chord);
+  const intervals = ct?.intervals ?? [0];
+  return new Set(intervals.map(i => (rootSt + i) % 12));
 }
 
 function evaluateAudio(floatData, byteFreqData, sampleRate, fftSize) {
@@ -316,20 +202,13 @@ function evaluateAudio(floatData, byteFreqData, sampleRate, fftSize) {
     const detectedSt = ((Math.round(12 * Math.log2(freq / 440) + 69) % 12) + 12) % 12;
     return detectedSt === targetSemitone() ? 'correct' : 'wrong';
   } else {
-    // Chord: check that expected pitch classes are present & prominent
-    const chroma  = buildChroma(byteFreqData, sampleRate, fftSize);
-    const rootSt  = targetSemitone();
-
-    // Check overall loudness
+    const chroma = buildChroma(byteFreqData, sampleRate, fftSize);
     const rms = chroma.reduce((a, b) => a + b, 0) / 12;
     if (rms < 0.05) return 'neutral';
-
     const expected = expectedChromaSet();
     let score = 0;
     for (const pc of expected) score += chroma[pc];
     score /= expected.size;
-
-    // Score > 0.55 → at least the expected notes are ringing
     if (score > 0.55) return 'correct';
     if (score < 0.25) return 'wrong';
     return 'neutral';
@@ -340,41 +219,39 @@ async function startMic() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     state.micStream = stream;
-    state.audioCtx  = new (window.AudioContext || window.webkitAudioContext)();
-    const source    = state.audioCtx.createMediaStreamSource(stream);
+    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = state.audioCtx.createMediaStreamSource(stream);
 
-    const FFT_SIZE  = 2048;
-    state.analyser  = state.audioCtx.createAnalyser();
-    state.analyser.fftSize        = FFT_SIZE;
+    const FFT_SIZE = 2048;
+    state.analyser = state.audioCtx.createAnalyser();
+    state.analyser.fftSize = FFT_SIZE;
     state.analyser.smoothingTimeConstant = 0.7;
     source.connect(state.analyser);
 
-    const floatData   = new Float32Array(FFT_SIZE);
-    const byteFreqData= new Uint8Array(FFT_SIZE / 2);
+    const floatData = new Float32Array(FFT_SIZE);
+    const byteFreqData = new Uint8Array(FFT_SIZE / 2);
 
     let lastResult = 'neutral';
-    let sameCount  = 0;
-    const CONFIRM  = 5; // frames before committing (≈ ~80 ms)
+    let sameCount = 0;
+    const CONFIRM = 5;
 
     function audioTick() {
       state.analyser.getFloatTimeDomainData(floatData);
       state.analyser.getByteFrequencyData(byteFreqData);
 
-      // Audio level meter
       let lvl = 0;
       for (let i = 0; i < floatData.length; i++) lvl += floatData[i] * floatData[i];
       lvl = Math.sqrt(lvl / floatData.length);
       audioBar.style.width = Math.min(lvl * 400, 100) + '%';
 
-      const result = evaluateAudio(floatData, byteFreqData,
-                                   state.audioCtx.sampleRate, FFT_SIZE);
+      const result = evaluateAudio(floatData, byteFreqData, state.audioCtx.sampleRate, FFT_SIZE);
 
       if (result === lastResult) {
         sameCount++;
-        if (sameCount >= CONFIRM) setCardState(result);
+        if (sameCount >= CONFIRM) setFeedbackState(result);
       } else {
         lastResult = result;
-        sameCount  = 0;
+        sameCount = 0;
       }
 
       state.audioLoop = requestAnimationFrame(audioTick);
@@ -382,164 +259,414 @@ async function startMic() {
     audioTick();
 
     state.micActive = true;
-    $('mic-btn').classList.replace('mic-off','mic-on');
-    $('mic-btn').querySelector('span').textContent = 'Audio feedback on';
+    micBtn.classList.add('mic-on');
     audioLevel.classList.add('active');
-
   } catch (err) {
-    alert('Could not access microphone: ' + err.message);
+    console.warn('Could not access microphone:', err.message);
   }
 }
 
 function stopMic() {
   cancelAnimationFrame(state.audioLoop);
   if (state.micStream) state.micStream.getTracks().forEach(t => t.stop());
-  if (state.audioCtx)  state.audioCtx.close();
+  if (state.audioCtx) state.audioCtx.close();
   state.micActive = false;
-  $('mic-btn').classList.replace('mic-on','mic-off');
-  $('mic-btn').querySelector('span').textContent = 'Enable audio feedback';
+  micBtn.classList.remove('mic-on');
   audioLevel.classList.remove('active');
   audioBar.style.width = '0%';
-  setCardState('neutral');
+  setFeedbackState('neutral');
 }
 
-// ── Settings Panel ────────────────────────────────────────────
+// ─── DOM REFS ──────────────────────────────────────────────────────────────
 
-function buildNoteCheckboxes() {
-  const container = $('note-checks');
-  container.innerHTML = '';
-  for (const n of NATURALS) {
-    container.appendChild(makeChip(n, n, state.naturals.has(n), checked => {
-      if (checked) state.naturals.add(n);
-      else         state.naturals.delete(n);
-      guardMinOne(state.naturals, NATURALS[0]);
-    }));
-  }
+const noteDisplay   = document.getElementById('noteDisplay');
+const chordQuality  = document.getElementById('chordQuality');
+const enharmonicEl  = document.getElementById('enharmonic');
+const feedbackLabel = document.getElementById('feedbackLabel');
+const modeLabel     = document.getElementById('modeLabel');
+const progressBar   = document.getElementById('progressBar');
+const timerLabel    = document.getElementById('timerLabel');
+const playPauseBtn  = document.getElementById('playPauseBtn');
+const playIcon      = document.getElementById('playIcon');
+const pauseIcon     = document.getElementById('pauseIcon');
+const prevBtn       = document.getElementById('prevBtn');
+const nextBtn       = document.getElementById('nextBtn');
+const intervalSlider = document.getElementById('intervalSlider');
+const intervalVal   = document.getElementById('intervalVal');
+const settingsBtn   = document.getElementById('settingsBtn');
+const overlay       = document.getElementById('overlay');
+const panel         = document.getElementById('panel');
+const closePanel    = document.getElementById('closePanel');
+const chordSection  = document.getElementById('chordSection');
+const notesWarn     = document.getElementById('notesWarn');
+const accWarn       = document.getElementById('accWarn');
+const chordsWarn    = document.getElementById('chordsWarn');
+const micBtn        = document.getElementById('micBtn');
+const audioLevel    = document.getElementById('audioLevel');
+const audioBar      = document.getElementById('audioBar');
+const glowOrb       = document.querySelector('.glow-orb');
+
+// ─── FEEDBACK STATE ────────────────────────────────────────────────────────
+
+function setFeedbackState(s) {
+  state.feedbackState = s;
+
+  // Note display color
+  noteDisplay.classList.remove('state-correct', 'state-wrong');
+  if (s === 'correct') noteDisplay.classList.add('state-correct');
+  if (s === 'wrong') noteDisplay.classList.add('state-wrong');
+
+  // Glow orb
+  glowOrb.classList.remove('correct', 'wrong');
+  if (s !== 'neutral') glowOrb.classList.add(s);
+
+  // Feedback text
+  const labels = { neutral: '', correct: 'Correct', wrong: 'Try again' };
+  feedbackLabel.textContent = labels[s] ?? '';
+  feedbackLabel.style.color =
+    s === 'correct' ? 'var(--green)' :
+    s === 'wrong'   ? 'var(--red)'   : 'var(--text-dim)';
 }
 
-function buildChordCheckboxes() {
-  const container = $('chord-checks');
-  container.innerHTML = '';
-  for (const [key, def] of Object.entries(CHORD_DEFS)) {
-    const label = def.suffix || 'maj';
-    container.appendChild(makeChip(key, label, state.chordTypes.has(key), checked => {
-      if (checked) state.chordTypes.add(key);
-      else         state.chordTypes.delete(key);
-      guardMinOne(state.chordTypes, 'maj');
-    }));
-  }
-}
+// ─── RENDER ────────────────────────────────────────────────────────────────
 
-function makeChip(key, label, checked, onChange) {
-  const chip = document.createElement('label');
-  chip.className = 'check-chip' + (checked ? ' checked' : '');
-  chip.dataset.key = key;
+function renderDisplay(item, animate = true) {
+  if (!item) return;
+  state.current = item;
 
-  const input = document.createElement('input');
-  input.type    = 'checkbox';
-  input.checked = checked;
-  input.addEventListener('change', () => {
-    chip.classList.toggle('checked', input.checked);
-    onChange(input.checked);
-  });
+  const accChar = item.acc === '#' ? '♯' : item.acc === 'b' ? '♭' : '';
+  const inner = accChar ? `${item.root}<sup>${accChar}</sup>` : item.root;
 
-  const text = document.createElement('span');
-  text.textContent = label;
+  // Enharmonic
+  const noteKey = item.root + item.acc;
+  const enh = ENHARMONIC[noteKey];
 
-  chip.append(input, text);
-  return chip;
-}
+  if (animate) {
+    noteDisplay.classList.add('flash-out');
+    setTimeout(() => {
+      noteDisplay.innerHTML = inner;
+      noteDisplay.classList.remove('flash-out');
+      noteDisplay.classList.add('flash-in');
+      void noteDisplay.offsetWidth;
+      noteDisplay.classList.remove('flash-in');
+      noteDisplay.classList.add('flash-in');
 
-function guardMinOne(set, fallback) {
-  if (set.size === 0) {
-    set.add(fallback);
-    // re-check the chip
-    document.querySelectorAll('.check-chip').forEach(chip => {
-      if (chip.dataset.key === fallback) {
-        chip.classList.add('checked');
-        chip.querySelector('input').checked = true;
+      if (state.mode === 'chord' && item.chord !== null) {
+        const ct = CHORD_TYPES.find(c => c.val === item.chord);
+        chordQuality.style.opacity = 0;
+        chordQuality.textContent = ct ? ct.label : '';
+        chordQuality.style.animation = 'none';
+        void chordQuality.offsetWidth;
+        chordQuality.style.animation = '';
+        chordQuality.classList.remove('flash-in');
+        void chordQuality.offsetWidth;
+        chordQuality.style.opacity = '';
+        chordQuality.style.animation = 'fadeUp 0.35s 0.1s ease forwards';
+      } else {
+        chordQuality.textContent = '';
+        chordQuality.style.opacity = '0';
       }
-    });
+
+      enharmonicEl.textContent = enh ? `= ${enh}` : '';
+    }, 140);
+  } else {
+    noteDisplay.innerHTML = inner;
+    if (state.mode === 'chord' && item.chord !== null) {
+      const ct = CHORD_TYPES.find(c => c.val === item.chord);
+      chordQuality.textContent = ct ? ct.label : '';
+      chordQuality.style.opacity = '1';
+    } else {
+      chordQuality.textContent = '';
+      chordQuality.style.opacity = '0';
+    }
+    enharmonicEl.textContent = enh ? `= ${enh}` : '';
+  }
+
+  setFeedbackState('neutral');
+}
+
+function updateModeUI() {
+  modeLabel.textContent = state.mode === 'note' ? 'Note' : 'Chord';
+  modeLabel.style.animation = 'none';
+  void modeLabel.offsetWidth;
+  modeLabel.style.animation = '';
+  chordSection.style.display = '';
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === state.mode);
+  });
+}
+
+// ─── TIMER ─────────────────────────────────────────────────────────────────
+
+let timerStart = null;
+let rafId = null;
+
+function startTimer() {
+  stopTimer();
+  timerStart = performance.now();
+  const duration = state.interval * 1000;
+
+  function tick(now) {
+    const elapsed = now - timerStart;
+    const pct = Math.min((elapsed / duration) * 100, 100);
+    progressBar.style.transition = 'none';
+    progressBar.style.width = pct + '%';
+    const remaining = Math.ceil((duration - elapsed) / 1000);
+    timerLabel.textContent = remaining + 's';
+
+    if (elapsed >= duration) {
+      playBeep();
+      advance();
+      return;
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+  rafId = requestAnimationFrame(tick);
+}
+
+function stopTimer() {
+  if (rafId) cancelAnimationFrame(rafId);
+  progressBar.style.width = '0%';
+  timerLabel.textContent = '';
+}
+
+function setPlaying(val) {
+  state.playing = val;
+  playIcon.style.display  = val ? 'none' : '';
+  pauseIcon.style.display = val ? '' : 'none';
+  if (val) {
+    startTimer();
+  } else {
+    stopTimer();
   }
 }
 
-function openSettings() {
-  buildNoteCheckboxes();
-  buildChordCheckboxes();
-  settingsOverlay.classList.remove('hidden');
+// ─── HISTORY ───────────────────────────────────────────────────────────────
+
+const history = [];
+let histIdx = -1;
+
+function advanceWithHistory() {
+  const item = nextItem();
+  if (!item) return;
+  history.splice(histIdx + 1);
+  history.push(item);
+  if (history.length > 50) history.shift();
+  histIdx = history.length - 1;
+  renderDisplay(item);
+  if (state.playing) startTimer();
 }
 
-function closeSettings() {
-  settingsOverlay.classList.add('hidden');
+function goBack() {
+  if (histIdx > 0) {
+    histIdx--;
+    renderDisplay(history[histIdx]);
+    if (state.playing) startTimer();
+  }
 }
 
-// ── Event Listeners ───────────────────────────────────────────
+function goForward() {
+  if (histIdx < history.length - 1) {
+    histIdx++;
+    renderDisplay(history[histIdx]);
+    if (state.playing) startTimer();
+  } else {
+    advanceWithHistory();
+  }
+}
 
-$('settings-btn').addEventListener('click', openSettings);
-$('close-settings').addEventListener('click', closeSettings);
-settingsOverlay.addEventListener('click', e => {
-  if (e.target === settingsOverlay) closeSettings();
+function advance() { advanceWithHistory(); }
+
+// Initial item
+(function init() {
+  const item = nextItem(false);
+  if (item) {
+    history.push(item);
+    histIdx = 0;
+    renderDisplay(item, false);
+  }
+})();
+
+// ─── CHIP BUILDERS ─────────────────────────────────────────────────────────
+
+function buildNotesGrid() {
+  const grid = document.getElementById('notesGrid');
+  grid.innerHTML = '';
+  ROOT_NOTES.forEach(n => {
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (state.activeNotes.has(n) ? ' on' : '');
+    chip.dataset.group = 'notes';
+    chip.dataset.val = n;
+    chip.textContent = n;
+    grid.appendChild(chip);
+  });
+}
+
+function buildChordsGrid() {
+  const grid = document.getElementById('chordsGrid');
+  grid.innerHTML = '';
+  CHORD_TYPES.forEach(ct => {
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (state.activeChords.has(ct.val) ? ' on' : '');
+    chip.dataset.group = 'chords';
+    chip.dataset.val = ct.val;
+    chip.textContent = ct.symbol;
+    grid.appendChild(chip);
+  });
+}
+
+buildNotesGrid();
+buildChordsGrid();
+
+// Chip click delegation
+document.addEventListener('click', e => {
+  const chip = e.target.closest('.chip[data-group]');
+  if (!chip) return;
+  const group = chip.dataset.group;
+  const val   = chip.dataset.val;
+
+  if (group === 'notes') {
+    if (state.activeNotes.has(val)) {
+      if (state.activeNotes.size <= 1) { notesWarn.classList.add('visible'); return; }
+      state.activeNotes.delete(val);
+    } else {
+      state.activeNotes.add(val);
+    }
+    notesWarn.classList.remove('visible');
+    buildNotesGrid();
+  } else if (group === 'acc') {
+    if (state.activeAcc.has(val)) {
+      if (state.activeAcc.size <= 1) { accWarn.classList.add('visible'); return; }
+      state.activeAcc.delete(val);
+    } else {
+      state.activeAcc.add(val);
+    }
+    accWarn.classList.remove('visible');
+    document.querySelectorAll('.chip[data-group="acc"]').forEach(c => {
+      c.classList.toggle('on', state.activeAcc.has(c.dataset.val));
+    });
+  } else if (group === 'chords') {
+    if (state.activeChords.has(val)) {
+      if (state.activeChords.size <= 1) { chordsWarn.classList.add('visible'); return; }
+      state.activeChords.delete(val);
+    } else {
+      state.activeChords.add(val);
+    }
+    chordsWarn.classList.remove('visible');
+    buildChordsGrid();
+  }
 });
 
-$('play-pause-btn').addEventListener('click', () => setPlaying(!state.playing));
-$('next-btn').addEventListener('click', () => { advance(); });
-$('prev-btn').addEventListener('click', () => {
-  // Just re-randomise (no real history needed for practice)
-  advance();
+// Select all / none
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.chip-action-btn[data-group]');
+  if (!btn) return;
+  const group  = btn.dataset.group;
+  const action = btn.dataset.action;
+
+  if (group === 'notes') {
+    if (action === 'all') ROOT_NOTES.forEach(n => state.activeNotes.add(n));
+    else { state.activeNotes.clear(); state.activeNotes.add(ROOT_NOTES[0]); }
+    notesWarn.classList.remove('visible');
+    buildNotesGrid();
+  } else if (group === 'chords') {
+    if (action === 'all') CHORD_TYPES.forEach(c => state.activeChords.add(c.val));
+    else { state.activeChords.clear(); state.activeChords.add(CHORD_TYPES[0].val); }
+    chordsWarn.classList.remove('visible');
+    buildChordsGrid();
+  }
 });
+
+// ─── INTERVAL SLIDER ───────────────────────────────────────────────────────
 
 intervalSlider.addEventListener('input', () => {
-  state.interval = +intervalSlider.value;
+  state.interval = parseInt(intervalSlider.value);
   intervalVal.textContent = state.interval + 's';
-  if (state.playing) {
-    stopTimer();
-    startTimer();
-  }
+  if (state.playing) startTimer();
 });
 
-cbSharps.addEventListener('change', () => { state.sharps = cbSharps.checked; });
-cbFlats.addEventListener('change',  () => { state.flats  = cbFlats.checked;  });
+// ─── MODE BUTTONS ──────────────────────────────────────────────────────────
 
-document.querySelectorAll('.pill[data-mode]').forEach(btn => {
+document.querySelectorAll('.mode-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (btn.dataset.mode === state.mode) return;
     state.mode = btn.dataset.mode;
-    document.querySelectorAll('.pill[data-mode]').forEach(b =>
-      b.classList.toggle('active', b.dataset.mode === state.mode));
-    $('note-section').style.display  = 'block';
-    $('chord-section').style.display = state.mode === 'chord' ? 'block' : 'none';
-    advance();
-    closeSettings();
-    setTimeout(openSettings, 50);
+    updateModeUI();
+    const item = nextItem(false);
+    if (item) {
+      history.length = 0;
+      history.push(item);
+      histIdx = 0;
+      renderDisplay(item);
+    }
+    if (state.playing) startTimer();
   });
 });
 
-$('mic-btn').addEventListener('click', () => {
+// ─── PLAY / PAUSE ──────────────────────────────────────────────────────────
+
+playPauseBtn.addEventListener('click', () => setPlaying(!state.playing));
+
+// ─── PREV / NEXT ───────────────────────────────────────────────────────────
+
+prevBtn.addEventListener('click', () => { goBack(); });
+nextBtn.addEventListener('click', () => { goForward(); });
+
+// ─── TAP CARD ──────────────────────────────────────────────────────────────
+
+noteDisplay.addEventListener('click', () => goForward());
+
+// ─── MIC TOGGLE ────────────────────────────────────────────────────────────
+
+micBtn.addEventListener('click', () => {
   if (state.micActive) stopMic();
   else startMic();
 });
 
-// Keyboard shortcuts
-document.addEventListener('keydown', e => {
-  if (settingsOverlay.classList.contains('hidden')) {
-    if (e.key === ' ' || e.key === 'ArrowRight') { e.preventDefault(); advance(); }
-    if (e.key === 'p')  setPlaying(!state.playing);
-    if (e.key === 's')  openSettings();
-    if (e.key === 'm')  { if (state.micActive) stopMic(); else startMic(); }
-  } else {
-    if (e.key === 'Escape') closeSettings();
-  }
+// ─── SETTINGS PANEL ────────────────────────────────────────────────────────
+
+function openPanel() {
+  overlay.classList.add('open');
+  panel.classList.add('open');
+}
+function closeSettingsPanel() {
+  overlay.classList.remove('open');
+  panel.classList.remove('open');
+}
+
+settingsBtn.addEventListener('click', openPanel);
+overlay.addEventListener('click', closeSettingsPanel);
+closePanel.addEventListener('click', closeSettingsPanel);
+
+// ─── RESET ─────────────────────────────────────────────────────────────────
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  state.interval = 5;
+  intervalSlider.value = 5;
+  intervalVal.textContent = '5s';
+  state.activeNotes = new Set(ROOT_NOTES);
+  state.activeAcc   = new Set(['natural','sharp','flat']);
+  state.activeChords = new Set(CHORD_TYPES.map(c => c.val));
+  buildNotesGrid();
+  buildChordsGrid();
+  document.querySelectorAll('.chip[data-group="acc"]').forEach(c => c.classList.add('on'));
+  [notesWarn, accWarn, chordsWarn].forEach(w => w.classList.remove('visible'));
+  if (state.playing) startTimer();
 });
 
-// ── Init ──────────────────────────────────────────────────────
+// ─── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────
 
-(function init() {
-  intervalSlider.value  = state.interval;
-  intervalVal.textContent = state.interval + 's';
-  cbSharps.checked = state.sharps;
-  cbFlats.checked  = state.flats;
+document.addEventListener('keydown', e => {
+  if (panel.classList.contains('open')) {
+    if (e.key === 'Escape') closeSettingsPanel();
+    return;
+  }
+  if (e.code === 'Space')      { e.preventDefault(); setPlaying(!state.playing); }
+  if (e.code === 'ArrowRight') goForward();
+  if (e.code === 'ArrowLeft')  goBack();
+  if (e.key === 's')           openPanel();
+  if (e.key === 'm')           { if (state.micActive) stopMic(); else startMic(); }
+});
 
-  pickRandom();
-  updateDisplay();
-  startTimer();
-})();
+// Final UI update
+updateModeUI();
