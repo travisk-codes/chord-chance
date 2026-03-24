@@ -107,26 +107,34 @@ function nextItem(avoidCurrent = true) {
 
 let beepCtx = null;
 
-function playBeep() {
+function playBeep(freq = 880, vol = 0.15, dur = 0.08) {
   try {
     if (!beepCtx) {
       beepCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
+    if (beepCtx.state === 'suspended') beepCtx.resume();
     const now = beepCtx.currentTime;
     const oscillator = beepCtx.createOscillator();
     const gain = beepCtx.createGain();
     oscillator.connect(gain);
     gain.connect(beepCtx.destination);
     oscillator.type = 'sine';
-    oscillator.frequency.value = 880;
-    gain.gain.setValueAtTime(0.2, now);
-    gain.gain.exponentialRampToValueAtTime(0.00001, now + 0.15);
+    oscillator.frequency.value = freq;
+    gain.gain.setValueAtTime(vol, now);
+    gain.gain.exponentialRampToValueAtTime(0.00001, now + dur);
     oscillator.start(now);
-    oscillator.stop(now + 0.15);
-    if (beepCtx.state === 'suspended') beepCtx.resume();
+    oscillator.stop(now + dur);
   } catch (e) {
     console.warn('Audio not supported', e);
   }
+}
+
+function playTick() {
+  playBeep(660, 0.06, 0.04);
+}
+
+function playAdvanceBeep() {
+  playBeep(880, 0.2, 0.12);
 }
 
 // ─── AUDIO FEEDBACK (Microphone) ───────────────────────────────────────────
@@ -135,11 +143,13 @@ function detectPitch(floatData, sampleRate) {
   const n = floatData.length;
   const half = Math.floor(n / 2);
 
+  // Check signal level
   let rms = 0;
   for (let i = 0; i < n; i++) rms += floatData[i] * floatData[i];
   rms = Math.sqrt(rms / n);
-  if (rms < 0.008) return null;
+  if (rms < 0.004) return null;  // lowered threshold for sensitivity
 
+  // Autocorrelation
   const corr = new Float32Array(half);
   for (let lag = 0; lag < half; lag++) {
     let sum = 0;
@@ -147,19 +157,23 @@ function detectPitch(floatData, sampleRate) {
     corr[lag] = sum;
   }
 
+  // Find first dip (skip DC peak)
   let start = 1;
   while (start < half - 1 && corr[start] > corr[start + 1]) start++;
 
+  // Find best peak after dip
   let bestLag = start, bestVal = -Infinity;
   for (let i = start; i < half; i++) {
     if (corr[i] > bestVal) { bestVal = corr[i]; bestLag = i; }
   }
 
-  if (bestVal / corr[0] < 0.4) return null;
+  if (bestVal / corr[0] < 0.25) return null;  // lowered from 0.4
 
+  // Parabolic interpolation for sub-sample accuracy
   const x0 = bestLag > 0 ? corr[bestLag - 1] : corr[bestLag];
   const x2 = bestLag < half - 1 ? corr[bestLag + 1] : corr[bestLag];
-  const refinedLag = bestLag + (x2 - x0) / (2 * (2 * corr[bestLag] - x0 - x2) || 1);
+  const denom = 2 * (2 * corr[bestLag] - x0 - x2);
+  const refinedLag = bestLag + (denom !== 0 ? (x2 - x0) / denom : 0);
   return sampleRate / refinedLag;
 }
 
@@ -195,23 +209,32 @@ function expectedChromaSet() {
   return new Set(intervals.map(i => (rootSt + i) % 12));
 }
 
+const SEMITONE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
 function evaluateAudio(floatData, byteFreqData, sampleRate, fftSize) {
   if (state.mode === 'note') {
     const freq = detectPitch(floatData, sampleRate);
-    if (freq === null) return 'neutral';
-    const detectedSt = ((Math.round(12 * Math.log2(freq / 440) + 69) % 12) + 12) % 12;
-    return detectedSt === targetSemitone() ? 'correct' : 'wrong';
+    if (freq === null) return { result: 'neutral', detected: null };
+    const midi = 12 * Math.log2(freq / 440) + 69;
+    const detectedSt = ((Math.round(midi) % 12) + 12) % 12;
+    const detectedName = SEMITONE_NAMES[detectedSt];
+    const match = detectedSt === targetSemitone() ? 'correct' : 'wrong';
+    return { result: match, detected: detectedName };
   } else {
     const chroma = buildChroma(byteFreqData, sampleRate, fftSize);
-    const rms = chroma.reduce((a, b) => a + b, 0) / 12;
-    if (rms < 0.05) return 'neutral';
+    const total = chroma.reduce((a, b) => a + b, 0) / 12;
+    if (total < 0.03) return { result: 'neutral', detected: null };
     const expected = expectedChromaSet();
     let score = 0;
     for (const pc of expected) score += chroma[pc];
     score /= expected.size;
-    if (score > 0.55) return 'correct';
-    if (score < 0.25) return 'wrong';
-    return 'neutral';
+    // Find strongest pitch class for display
+    let maxPc = 0, maxVal = 0;
+    for (let i = 0; i < 12; i++) { if (chroma[i] > maxVal) { maxVal = chroma[i]; maxPc = i; } }
+    const detectedName = SEMITONE_NAMES[maxPc];
+    if (score > 0.45) return { result: 'correct', detected: detectedName };
+    if (score < 0.2) return { result: 'wrong', detected: detectedName };
+    return { result: 'neutral', detected: detectedName };
   }
 }
 
@@ -222,33 +245,36 @@ async function startMic() {
     state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const source = state.audioCtx.createMediaStreamSource(stream);
 
-    const FFT_SIZE = 2048;
+    const FFT_SIZE = 4096;  // larger for better pitch resolution
     state.analyser = state.audioCtx.createAnalyser();
     state.analyser.fftSize = FFT_SIZE;
-    state.analyser.smoothingTimeConstant = 0.7;
+    state.analyser.smoothingTimeConstant = 0.5;  // less smoothing for faster response
     source.connect(state.analyser);
 
     const floatData = new Float32Array(FFT_SIZE);
-    const byteFreqData = new Uint8Array(FFT_SIZE / 2);
+    const byteFreqData = new Uint8Array(state.analyser.frequencyBinCount);
 
     let lastResult = 'neutral';
     let sameCount = 0;
-    const CONFIRM = 5;
+    const CONFIRM = 3;  // fewer frames needed to confirm
 
     function audioTick() {
       state.analyser.getFloatTimeDomainData(floatData);
       state.analyser.getByteFrequencyData(byteFreqData);
 
+      // Audio level meter
       let lvl = 0;
       for (let i = 0; i < floatData.length; i++) lvl += floatData[i] * floatData[i];
       lvl = Math.sqrt(lvl / floatData.length);
-      audioBar.style.width = Math.min(lvl * 400, 100) + '%';
+      audioBar.style.width = Math.min(lvl * 500, 100) + '%';
 
-      const result = evaluateAudio(floatData, byteFreqData, state.audioCtx.sampleRate, FFT_SIZE);
+      const { result, detected } = evaluateAudio(floatData, byteFreqData, state.audioCtx.sampleRate, FFT_SIZE);
 
       if (result === lastResult) {
         sameCount++;
-        if (sameCount >= CONFIRM) setFeedbackState(result);
+        if (sameCount >= CONFIRM) {
+          setFeedbackState(result, detected);
+        }
       } else {
         lastResult = result;
         sameCount = 0;
@@ -308,7 +334,7 @@ const glowOrb       = document.querySelector('.glow-orb');
 
 // ─── FEEDBACK STATE ────────────────────────────────────────────────────────
 
-function setFeedbackState(s) {
+function setFeedbackState(s, detectedNote) {
   state.feedbackState = s;
 
   // Note display color
@@ -320,9 +346,14 @@ function setFeedbackState(s) {
   glowOrb.classList.remove('correct', 'wrong');
   if (s !== 'neutral') glowOrb.classList.add(s);
 
-  // Feedback text
-  const labels = { neutral: '', correct: 'Correct', wrong: 'Try again' };
-  feedbackLabel.textContent = labels[s] ?? '';
+  // Feedback text - show detected note when wrong
+  if (s === 'correct') {
+    feedbackLabel.textContent = 'Correct';
+  } else if (s === 'wrong' && detectedNote) {
+    feedbackLabel.textContent = `Hearing: ${detectedNote}`;
+  } else {
+    feedbackLabel.textContent = '';
+  }
   feedbackLabel.style.color =
     s === 'correct' ? 'var(--green)' :
     s === 'wrong'   ? 'var(--red)'   : 'var(--text-dim)';
@@ -400,10 +431,13 @@ function updateModeUI() {
 
 let timerStart = null;
 let rafId = null;
+let tickInterval = null;
+let lastTickSecond = -1;
 
 function startTimer() {
   stopTimer();
   timerStart = performance.now();
+  lastTickSecond = -1;
   const duration = state.interval * 1000;
 
   function tick(now) {
@@ -414,8 +448,15 @@ function startTimer() {
     const remaining = Math.ceil((duration - elapsed) / 1000);
     timerLabel.textContent = remaining + 's';
 
+    // Beep every second
+    const elapsedSec = Math.floor(elapsed / 1000);
+    if (elapsedSec > lastTickSecond && elapsed < duration) {
+      lastTickSecond = elapsedSec;
+      playTick();
+    }
+
     if (elapsed >= duration) {
-      playBeep();
+      playAdvanceBeep();
       advance();
       return;
     }
@@ -428,6 +469,7 @@ function stopTimer() {
   if (rafId) cancelAnimationFrame(rafId);
   progressBar.style.width = '0%';
   timerLabel.textContent = '';
+  lastTickSecond = -1;
 }
 
 function setPlaying(val) {
