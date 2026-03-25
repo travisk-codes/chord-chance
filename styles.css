@@ -313,23 +313,25 @@ header {
   .ctrl-btn.primary { width: 66px; height: 66px; }
 }
 
-/* ── MIC ROW ── */
-.mic-row {
+/* ── INPUT ROW ── */
+.input-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-top: 16px;
   position: relative;
   z-index: 1;
 }
 
-.mic-btn {
+.input-btn {
   width: 40px !important;
   height: 40px !important;
   transition: all 0.25s !important;
 }
-.mic-btn svg { width: 18px; height: 18px; }
-.mic-btn.mic-on {
+.input-btn svg { width: 17px; height: 17px; }
+
+/* Active state shared by mic, desktop, and MIDI buttons */
+.input-btn.active-input {
   border-color: var(--green) !important;
   color: var(--green) !important;
   background: rgba(76,201,124,0.1) !important;
@@ -350,6 +352,9 @@ header {
   overflow: hidden;
   opacity: 0;
   transition: opacity 0.25s;
+  margin-top: 8px;
+  position: relative;
+  z-index: 1;
 }
 .audio-level.active { opacity: 1; }
 

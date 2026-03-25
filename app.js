@@ -51,13 +51,21 @@ const state = {
   activeAcc: new Set(['natural','sharp','flat']),
   activeChords: new Set(CHORD_TYPES.map(c => c.val)),
   current: { root: 'C', acc: '', chord: null },
+  // audio inputs
   micActive: false,
+  desktopActive: false,
+  midiActive: false,
+  midiAccess: null,
   audioCtx: null,
   analyser: null,
-  micStream: null,
+  audioStream: null,
   audioLoop: null,
   feedbackState: 'neutral',
 };
+
+function anyInputActive() {
+  return state.micActive || state.desktopActive || state.midiActive;
+}
 
 const stats = { correct: 0, wrong: 0, streak: 0, bestStreak: 0 };
 
@@ -313,51 +321,64 @@ function evaluateAudio(floatData, byteFreqData, sampleRate, fftSize) {
   }
 }
 
+// ─── SHARED AUDIO PIPELINE ─────────────────────────────────────────────────
+
+function startAudioPipeline(stream) {
+  state.audioStream = stream;
+  state.audioCtx    = new (window.AudioContext || window.webkitAudioContext)();
+  const source      = state.audioCtx.createMediaStreamSource(stream);
+
+  const FFT_SIZE = 4096;
+  state.analyser = state.audioCtx.createAnalyser();
+  state.analyser.fftSize = FFT_SIZE;
+  state.analyser.smoothingTimeConstant = 0.6;
+  source.connect(state.analyser);
+
+  const floatData    = new Float32Array(FFT_SIZE);
+  const byteFreqData = new Uint8Array(state.analyser.frequencyBinCount);
+  let lastResult = 'neutral', sameCount = 0;
+  const CONFIRM = 4;
+
+  function audioTick() {
+    state.analyser.getFloatTimeDomainData(floatData);
+    state.analyser.getByteFrequencyData(byteFreqData);
+
+    let lvl = 0;
+    for (let i = 0; i < floatData.length; i++) lvl += floatData[i] * floatData[i];
+    audioBar.style.width = Math.min(Math.sqrt(lvl / floatData.length) * 500, 100) + '%';
+
+    const { result, detected } = evaluateAudio(floatData, byteFreqData, state.audioCtx.sampleRate, FFT_SIZE);
+    if (result === lastResult) {
+      sameCount++;
+      if (sameCount >= CONFIRM) setFeedbackState(result, detected);
+    } else {
+      lastResult = result;
+      sameCount  = 0;
+    }
+    state.audioLoop = requestAnimationFrame(audioTick);
+  }
+  audioTick();
+  audioLevel.classList.add('active');
+}
+
+function stopAudioPipeline() {
+  if (state.audioLoop)  cancelAnimationFrame(state.audioLoop);
+  if (state.audioStream) state.audioStream.getTracks().forEach(t => t.stop());
+  if (state.audioCtx)  { state.audioCtx.close(); state.audioCtx = null; }
+  state.audioStream = null;
+  audioLevel.classList.remove('active');
+  audioBar.style.width = '0%';
+}
+
+// ─── MICROPHONE ────────────────────────────────────────────────────────────
+
 async function startMic() {
+  if (state.desktopActive) stopDesktopAudio();
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    state.micStream = stream;
-    state.audioCtx  = new (window.AudioContext || window.webkitAudioContext)();
-    const source    = state.audioCtx.createMediaStreamSource(stream);
-
-    const FFT_SIZE  = 4096;
-    state.analyser  = state.audioCtx.createAnalyser();
-    state.analyser.fftSize = FFT_SIZE;
-    state.analyser.smoothingTimeConstant = 0.6;
-    source.connect(state.analyser);
-
-    const floatData    = new Float32Array(FFT_SIZE);
-    const byteFreqData = new Uint8Array(state.analyser.frequencyBinCount);
-
-    let lastResult = 'neutral', sameCount = 0;
-    const CONFIRM = 4;
-
-    function audioTick() {
-      state.analyser.getFloatTimeDomainData(floatData);
-      state.analyser.getByteFrequencyData(byteFreqData);
-
-      let lvl = 0;
-      for (let i = 0; i < floatData.length; i++) lvl += floatData[i] * floatData[i];
-      lvl = Math.sqrt(lvl / floatData.length);
-      audioBar.style.width = Math.min(lvl * 500, 100) + '%';
-
-      const { result, detected } = evaluateAudio(floatData, byteFreqData, state.audioCtx.sampleRate, FFT_SIZE);
-
-      if (result === lastResult) {
-        sameCount++;
-        if (sameCount >= CONFIRM) setFeedbackState(result, detected);
-      } else {
-        lastResult = result;
-        sameCount  = 0;
-      }
-
-      state.audioLoop = requestAnimationFrame(audioTick);
-    }
-    audioTick();
-
+    startAudioPipeline(stream);
     state.micActive = true;
-    micBtn.classList.add('mic-on');
-    audioLevel.classList.add('active');
+    micBtn.classList.add('active-input');
   } catch(err) {
     console.warn('Microphone access denied:', err.message);
   }
@@ -365,16 +386,132 @@ async function startMic() {
 
 function stopMic() {
   cancelAutoAdvance();
-  if (state.audioLoop) cancelAnimationFrame(state.audioLoop);
-  if (state.micStream) state.micStream.getTracks().forEach(t => t.stop());
-  if (state.audioCtx)  { state.audioCtx.close(); state.audioCtx = null; }
+  stopAudioPipeline();
   state.micActive = false;
-  state.micStream = null;
-  micBtn.classList.remove('mic-on');
-  audioLevel.classList.remove('active');
-  audioBar.style.width = '0%';
+  micBtn.classList.remove('active-input');
   setFeedbackState('neutral');
-  updateStatsUI(); // hide streak row
+  updateStatsUI();
+}
+
+// ─── DESKTOP AUDIO ─────────────────────────────────────────────────────────
+
+async function startDesktopAudio() {
+  if (state.micActive) stopMic();
+  try {
+    // Request minimal video to satisfy browser requirements; stop it immediately
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl:  false,
+      },
+      video: { width: 1, height: 1, frameRate: 1 },
+    });
+    stream.getVideoTracks().forEach(t => t.stop());
+
+    if (stream.getAudioTracks().length === 0) {
+      console.warn('No audio track captured — ensure "Share tab audio" was checked');
+      return;
+    }
+
+    // If user closes the share via browser UI, treat it as stopDesktopAudio
+    stream.getAudioTracks()[0].addEventListener('ended', () => stopDesktopAudio());
+
+    startAudioPipeline(stream);
+    state.desktopActive = true;
+    desktopAudioBtn.classList.add('active-input');
+  } catch(err) {
+    if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+      console.warn('Desktop audio capture failed:', err.message);
+    }
+  }
+}
+
+function stopDesktopAudio() {
+  cancelAutoAdvance();
+  stopAudioPipeline();
+  state.desktopActive = false;
+  desktopAudioBtn.classList.remove('active-input');
+  setFeedbackState('neutral');
+  updateStatsUI();
+}
+
+// ─── MIDI INPUT ────────────────────────────────────────────────────────────
+
+const heldMidiNotes = new Set(); // MIDI note numbers currently held
+
+function evaluateMidi() {
+  if (heldMidiNotes.size === 0) { setFeedbackState('neutral'); return; }
+
+  const heldPCs = new Set([...heldMidiNotes].map(n => n % 12));
+
+  if (state.mode === 'note') {
+    if (heldPCs.has(targetSemitone())) {
+      setFeedbackState('correct');
+    } else {
+      setFeedbackState('wrong', SEMITONE_NAMES[[...heldPCs][0]]);
+    }
+  } else {
+    // Chord mode: check coverage of expected pitch classes
+    const expected = expectedChromaSet();
+    let matchCount = 0;
+    for (const pc of expected) { if (heldPCs.has(pc)) matchCount++; }
+    const coverage = matchCount / expected.size;
+
+    // Allow up to 1 extra note (e.g. doubled root, passing tone)
+    let extraCount = 0;
+    for (const pc of heldPCs) { if (!expected.has(pc)) extraCount++; }
+
+    if (coverage >= 0.8 && extraCount <= 1) {
+      setFeedbackState('correct');
+    } else if (heldPCs.size > 0) {
+      // Show the lowest held note as the "detected" root
+      const lowestPC = [...heldMidiNotes].sort((a, b) => a - b)[0] % 12;
+      setFeedbackState('wrong', SEMITONE_NAMES[lowestPC]);
+    }
+  }
+}
+
+function handleMidiMessage(e) {
+  const [status, note, velocity] = e.data;
+  const cmd = status & 0xf0;
+  if      (cmd === 0x90 && velocity > 0) heldMidiNotes.add(note);
+  else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) heldMidiNotes.delete(note);
+  // Ignore other message types (CC, pitch bend, etc.)
+  if (cmd === 0x90 || cmd === 0x80) evaluateMidi();
+}
+
+async function startMidi() {
+  if (!navigator.requestMIDIAccess) {
+    console.warn('Web MIDI API not supported in this browser');
+    return;
+  }
+  try {
+    const access = await navigator.requestMIDIAccess();
+    state.midiAccess = access;
+    access.inputs.forEach(input => { input.onmidimessage = handleMidiMessage; });
+    access.onstatechange = e => {
+      if (e.port.type === 'input' && e.port.state === 'connected') {
+        e.port.onmidimessage = handleMidiMessage;
+      }
+    };
+    state.midiActive = true;
+    midiBtn.classList.add('active-input');
+  } catch(err) {
+    console.warn('MIDI access denied:', err.message);
+  }
+}
+
+function stopMidi() {
+  if (state.midiAccess) {
+    state.midiAccess.inputs.forEach(input => { input.onmidimessage = null; });
+    state.midiAccess = null;
+  }
+  heldMidiNotes.clear();
+  state.midiActive = false;
+  midiBtn.classList.remove('active-input');
+  setFeedbackState('neutral');
+  updateStatsUI();
 }
 
 // ─── DOM REFS ──────────────────────────────────────────────────────────────
@@ -404,6 +541,8 @@ const notesWarn         = document.getElementById('notesWarn');
 const accWarn           = document.getElementById('accWarn');
 const chordsWarn        = document.getElementById('chordsWarn');
 const micBtn            = document.getElementById('micBtn');
+const desktopAudioBtn   = document.getElementById('desktopAudioBtn');
+const midiBtn           = document.getElementById('midiBtn');
 const audioLevel        = document.getElementById('audioLevel');
 const audioBar          = document.getElementById('audioBar');
 const hintBtn           = document.getElementById('hintBtn');
@@ -458,7 +597,7 @@ function setFeedbackState(s, detectedNote) {
 // ─── SESSION STATS ─────────────────────────────────────────────────────────
 
 function recordAdvance() {
-  if (!state.micActive) return;
+  if (!anyInputActive()) return;
   if (state.feedbackState === 'correct') {
     stats.correct++;
     stats.streak++;
@@ -478,7 +617,7 @@ function updateStatsUI() {
   statBest.textContent     = stats.bestStreak;
   statAccuracy.textContent = total > 0 ? Math.round(stats.correct / total * 100) + '%' : '—';
 
-  if (stats.streak >= 2 && state.micActive) {
+  if (stats.streak >= 2 && anyInputActive()) {
     streakRow.style.display = '';
     streakBadge.textContent = stats.streak;
   } else {
@@ -841,9 +980,19 @@ document.addEventListener('touchend', e => {
 // ─── MIC ───────────────────────────────────────────────────────────────────
 
 micBtn.addEventListener('click', () => {
-  if (state.micActive) stopMic();
-  else startMic();
+  if (state.micActive) stopMic(); else startMic();
 });
+
+desktopAudioBtn.addEventListener('click', () => {
+  if (state.desktopActive) stopDesktopAudio(); else startDesktopAudio();
+});
+
+midiBtn.addEventListener('click', () => {
+  if (state.midiActive) stopMidi(); else startMidi();
+});
+
+// Hide MIDI button on browsers that don't support Web MIDI
+if (!navigator.requestMIDIAccess) midiBtn.style.display = 'none';
 
 // ─── THEME TOGGLE ──────────────────────────────────────────────────────────
 
@@ -894,6 +1043,7 @@ document.addEventListener('keydown', e => {
   if (e.code === 'ArrowRight') goForward();
   if (e.code === 'ArrowLeft')  goBack();
   if (e.key === 's')           openPanel();
-  if (e.key === 'm')           { if (state.micActive) stopMic(); else startMic(); }
-  if (e.key === 'h')           playHint();
+  if (e.key === 'm') { if (state.micActive) stopMic(); else startMic(); }
+  if (e.key === 'd') { if (state.desktopActive) stopDesktopAudio(); else startDesktopAudio(); }
+  if (e.key === 'h') playHint();
 });
