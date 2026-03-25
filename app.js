@@ -1227,15 +1227,6 @@ if (midiLowSlider) {
   });
 }
 
-if (midiLowSlider) {
-  midiLowSlider.addEventListener('input', () => {
-    const val = parseInt(midiLowSlider.value);
-    state.midiMinNote = val === 0 ? 0 : val * 12 + 24;
-    if (midiLowVal) midiLowVal.textContent = val === 0 ? 'All' : 'C' + (val + 1);
-    saveSettings();
-  });
-}
-
 // ─── MODE BUTTONS ──────────────────────────────────────────────────────────
 
 document.querySelectorAll('.mode-btn').forEach(btn => {
@@ -1338,6 +1329,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   state.earMode = false;
   if (midiLowSlider) { midiLowSlider.value = 0; midiLowVal.textContent = 'All'; }
   syncToggles();
+  updateModeUI();
   state.activeNotes  = new Set(ROOT_NOTES);
   state.activeAcc    = new Set(['natural','sharp','flat']);
   state.activeChords = new Set(CHORD_TYPES.map(c => c.val));
