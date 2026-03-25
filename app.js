@@ -32,13 +32,6 @@ const NOTE_TO_SEMITONE = {
   'Db':1,'Eb':3,'Gb':6,'Ab':8,'Bb':10,
 };
 
-// Enharmonic equivalents for accidental notes
-const ENHARMONIC = {
-  'C#':'D♭', 'Db':'C♯', 'D#':'E♭', 'Eb':'D♯',
-  'F#':'G♭', 'Gb':'F♯', 'G#':'A♭', 'Ab':'G♯',
-  'A#':'B♭', 'Bb':'A♯',
-};
-
 // ─── STATE ─────────────────────────────────────────────────────────────────
 
 const state = {
@@ -307,7 +300,6 @@ function stopMic() {
 
 const noteDisplay   = document.getElementById('noteDisplay');
 const chordQuality  = document.getElementById('chordQuality');
-const enharmonicEl  = document.getElementById('enharmonic');
 const feedbackLabel = document.getElementById('feedbackLabel');
 const modeLabel     = document.getElementById('modeLabel');
 const progressBar   = document.getElementById('progressBar');
@@ -331,6 +323,16 @@ const micBtn        = document.getElementById('micBtn');
 const audioLevel    = document.getElementById('audioLevel');
 const audioBar      = document.getElementById('audioBar');
 const glowOrb       = document.querySelector('.glow-orb');
+
+// ─── GLOW POSITION ─────────────────────────────────────────────────────────
+
+function updateGlowPosition() {
+  const rect = noteDisplay.getBoundingClientRect();
+  glowOrb.style.top  = (rect.top  + rect.height / 2) + 'px';
+  glowOrb.style.left = (rect.left + rect.width  / 2) + 'px';
+}
+
+window.addEventListener('resize', updateGlowPosition);
 
 // ─── FEEDBACK STATE ────────────────────────────────────────────────────────
 
@@ -368,10 +370,6 @@ function renderDisplay(item, animate = true) {
   const accChar = item.acc === '#' ? '♯' : item.acc === 'b' ? '♭' : '';
   const inner = accChar ? `${item.root}<sup>${accChar}</sup>` : item.root;
 
-  // Enharmonic
-  const noteKey = item.root + item.acc;
-  const enh = ENHARMONIC[noteKey];
-
   if (animate) {
     noteDisplay.classList.add('flash-out');
     setTimeout(() => {
@@ -397,8 +395,6 @@ function renderDisplay(item, animate = true) {
         chordQuality.textContent = '';
         chordQuality.style.opacity = '0';
       }
-
-      enharmonicEl.textContent = enh ? `= ${enh}` : '';
     }, 140);
   } else {
     noteDisplay.innerHTML = inner;
@@ -410,7 +406,6 @@ function renderDisplay(item, animate = true) {
       chordQuality.textContent = '';
       chordQuality.style.opacity = '0';
     }
-    enharmonicEl.textContent = enh ? `= ${enh}` : '';
   }
 
   setFeedbackState('neutral');
@@ -477,6 +472,9 @@ function setPlaying(val) {
   playIcon.style.display  = val ? 'none' : '';
   pauseIcon.style.display = val ? '' : 'none';
   if (val) {
+    // Init audio context during user gesture for mobile compatibility
+    if (!beepCtx) beepCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (beepCtx.state === 'suspended') beepCtx.resume();
     startTimer();
   } else {
     stopTimer();
@@ -712,3 +710,4 @@ document.addEventListener('keydown', e => {
 
 // Final UI update
 updateModeUI();
+updateGlowPosition();
