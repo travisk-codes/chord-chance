@@ -61,6 +61,9 @@ const state = {
   audioStream: null,
   audioLoop: null,
   feedbackState: 'neutral',
+  correctChime: true,
+  midiMinNote: 0,
+  earMode: false,
 };
 
 function anyInputActive() {
@@ -68,6 +71,11 @@ function anyInputActive() {
 }
 
 const stats = { correct: 0, wrong: 0, streak: 0, bestStreak: 0 };
+
+const noteWeights = {};
+const chordWeights = {};
+const noteStats = {};
+const chordStats = {};
 
 // ─── SETTINGS PERSISTENCE ──────────────────────────────────────────────────
 
@@ -82,6 +90,9 @@ function saveSettings() {
       activeAcc:            [...state.activeAcc],
       activeChords:         [...state.activeChords],
       mode:                 state.mode,
+      correctChime:         state.correctChime,
+      midiMinNote:          state.midiMinNote,
+      earMode:              state.earMode,
     }));
   } catch(e) {}
 }
@@ -98,6 +109,9 @@ function loadSettings() {
     if (Array.isArray(s.activeAcc)    && s.activeAcc.length)    state.activeAcc    = new Set(s.activeAcc);
     if (Array.isArray(s.activeChords) && s.activeChords.length) state.activeChords = new Set(s.activeChords);
     if (s.mode === 'note' || s.mode === 'chord') state.mode = s.mode;
+    if (typeof s.correctChime === 'boolean') state.correctChime = s.correctChime;
+    if (typeof s.midiMinNote === 'number') state.midiMinNote = s.midiMinNote;
+    if (typeof s.earMode === 'boolean') state.earMode = s.earMode;
   } catch(e) {}
 }
 
@@ -139,6 +153,18 @@ function buildPool() {
 
 function randomFrom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
+function weightedRandom(arr, keyFn, weightMap) {
+  if (!arr.length) return null;
+  const weights = arr.map(item => weightMap[keyFn(item)] ?? 1);
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < arr.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return arr[i];
+  }
+  return arr[arr.length - 1];
+}
+
 function nextItem(avoidCurrent = true) {
   const pool = buildPool();
   if (!pool.length) return null;
@@ -147,7 +173,7 @@ function nextItem(avoidCurrent = true) {
 
   let candidate, tries = 0;
   do {
-    candidate = randomFrom(pool);
+    candidate = weightedRandom(pool, item => item.root + item.acc, noteWeights);
     tries++;
   } while (avoidCurrent && tries < 8 && candidate.root === state.current.root && candidate.acc === state.current.acc);
 
@@ -155,7 +181,7 @@ function nextItem(avoidCurrent = true) {
   if (state.mode === 'chord') {
     let chordTries = 0;
     do {
-      chord = randomFrom(chordPool);
+      chord = weightedRandom(chordPool, v => v, chordWeights);
       chordTries++;
     } while (avoidCurrent && chordTries < 8 && chord === state.current.chord);
   }
@@ -194,6 +220,26 @@ function playTone(freq, vol = 0.2, dur = 0.5, type = 'triangle') {
 function playBeep(freq = 880, vol = 0.15, dur = 0.08) { playTone(freq, vol, dur, 'sine'); }
 function playTick()        { if (state.ticksEnabled) playBeep(660, 0.06, 0.04); }
 function playAdvanceBeep() { playBeep(880, 0.2,  0.12); }
+
+function playCorrectChime() {
+  try {
+    const ctx = ensureBeepCtx();
+    const now = ctx.currentTime;
+    [[1047, 0], [1319, 0.06]].forEach(([freq, delay]) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, now + delay);
+      gain.gain.linearRampToValueAtTime(0.08, now + delay + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.5);
+      osc.start(now + delay);
+      osc.stop(now + delay + 0.5);
+    });
+  } catch(e) {}
+}
 
 // ─── HINT (play note/chord tones) ──────────────────────────────────────────
 
@@ -348,12 +394,16 @@ function startAudioPipeline(stream) {
     audioBar.style.width = Math.min(Math.sqrt(lvl / floatData.length) * 500, 100) + '%';
 
     const { result, detected } = evaluateAudio(floatData, byteFreqData, state.audioCtx.sampleRate, FFT_SIZE);
-    if (result === lastResult) {
-      sameCount++;
-      if (sameCount >= CONFIRM) setFeedbackState(result, detected);
+    if (!state.earMode) {
+      if (result === lastResult) {
+        sameCount++;
+        if (sameCount >= CONFIRM) setFeedbackState(result, detected);
+      } else {
+        lastResult = result;
+        sameCount  = 0;
+      }
     } else {
-      lastResult = result;
-      sameCount  = 0;
+      lastResult = 'neutral'; sameCount = 0;
     }
     state.audioLoop = requestAnimationFrame(audioTick);
   }
@@ -441,9 +491,19 @@ function stopDesktopAudio() {
 const heldMidiNotes = new Set(); // MIDI note numbers currently held
 
 function evaluateMidi() {
-  if (heldMidiNotes.size === 0) { setFeedbackState('neutral'); return; }
+  if (heldMidiNotes.size === 0) {
+    setFeedbackState('neutral');
+    if (midiNoteDisplay) midiNoteDisplay.textContent = '';
+    return;
+  }
 
   const heldPCs = new Set([...heldMidiNotes].map(n => n % 12));
+
+  // Update MIDI note display
+  if (midiNoteDisplay) {
+    const sortedPCs = [...heldPCs].sort((a, b) => a - b);
+    midiNoteDisplay.textContent = sortedPCs.map(pc => SEMITONE_NAMES[pc]).join(' · ');
+  }
 
   if (state.mode === 'note') {
     if (heldPCs.has(targetSemitone())) {
@@ -475,6 +535,9 @@ function evaluateMidi() {
 function handleMidiMessage(e) {
   const [status, note, velocity] = e.data;
   const cmd = status & 0xf0;
+  if (cmd === 0x90 || cmd === 0x80) {
+    if (state.midiMinNote > 0 && note < state.midiMinNote) return;
+  }
   if      (cmd === 0x90 && velocity > 0) heldMidiNotes.add(note);
   else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) heldMidiNotes.delete(note);
   // Ignore other message types (CC, pitch bend, etc.)
@@ -511,6 +574,7 @@ function stopMidi() {
   state.midiActive = false;
   midiBtn.classList.remove('active-input');
   setFeedbackState('neutral');
+  midiNoteDisplay.textContent = '';
   updateStatsUI();
 }
 
@@ -553,6 +617,15 @@ const statCorrect       = document.getElementById('statCorrect');
 const statWrong         = document.getElementById('statWrong');
 const statBest          = document.getElementById('statBest');
 const statAccuracy      = document.getElementById('statAccuracy');
+const pianoDisplay      = document.getElementById('pianoDisplay');
+const midiNoteDisplay   = document.getElementById('midiNoteDisplay');
+const midiLowSlider     = document.getElementById('midiLowSlider');
+const midiLowVal        = document.getElementById('midiLowVal');
+const earChoices        = document.getElementById('earChoices');
+const summaryOverlay    = document.getElementById('summaryOverlay');
+const summaryPanel      = document.getElementById('summaryPanel');
+const summaryBody       = document.getElementById('summaryBody');
+const summaryBtn        = document.getElementById('summaryBtn');
 
 // ─── GLOW POSITION ─────────────────────────────────────────────────────────
 
@@ -562,6 +635,153 @@ function updateGlowPosition() {
   glowOrb.style.left = (rect.left + rect.width  / 2) + 'px';
 }
 window.addEventListener('resize', updateGlowPosition);
+
+// ─── PIANO VOICING ─────────────────────────────────────────────────────────
+
+function buildPianoSVG(highlightPCs) {
+  const WHITE = [{pc:0,x:0},{pc:2,x:13},{pc:4,x:26},{pc:5,x:39},{pc:7,x:52},{pc:9,x:65},{pc:11,x:78}];
+  const BLACK = [{pc:1,x:9},{pc:3,x:22},{pc:6,x:48},{pc:8,x:61},{pc:10,x:74}];
+  const W=90, H=42, BH=26;
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block">`;
+  WHITE.forEach(k => {
+    const lit = highlightPCs.has(k.pc);
+    s += `<rect x="${k.x}" y="0" width="12" height="${H}" rx="1" fill="${lit?'var(--green)':'var(--piano-white)'}" stroke="var(--piano-border)" stroke-width="0.5"/>`;
+  });
+  BLACK.forEach(k => {
+    const lit = highlightPCs.has(k.pc);
+    s += `<rect x="${k.x}" y="0" width="8" height="${BH}" rx="1" fill="${lit?'var(--green)':'var(--piano-black)'}"/>`;
+  });
+  return s + '</svg>';
+}
+
+function renderPianoVoicing(item) {
+  if (!pianoDisplay) return;
+  if (!item || state.mode !== 'chord' || !item.chord) {
+    pianoDisplay.style.opacity = '0';
+    return;
+  }
+  const ct = CHORD_TYPES.find(c => c.val === item.chord);
+  if (!ct) { pianoDisplay.style.opacity = '0'; return; }
+  const root = item.root + (item.acc === '#' ? '#' : item.acc === 'b' ? 'b' : '');
+  const rootPC = NOTE_TO_SEMITONE[root] ?? 0;
+  const pcs = new Set(ct.intervals.map(i => (rootPC + i) % 12));
+  pianoDisplay.innerHTML = buildPianoSVG(pcs);
+  pianoDisplay.style.opacity = '1';
+}
+
+// ─── EAR TRAINING ──────────────────────────────────────────────────────────
+
+let earHintTimer = null;
+let earAnswered  = false;
+
+function showEarChoices(item) {
+  if (!earChoices) return;
+  earAnswered = false;
+  if (!state.earMode) { earChoices.innerHTML = ''; earChoices.style.display = 'none'; return; }
+
+  let choices; // [{label, correct}]
+  if (state.mode === 'note') {
+    const correctPC   = targetSemitone();
+    const correctLabel = SEMITONE_NAMES[correctPC].replace('#','♯');
+    const wrongs = SEMITONE_NAMES
+      .map((n, i) => ({ n, i }))
+      .filter(x => x.i !== correctPC)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 3)
+      .map(x => ({ label: x.n.replace('#','♯'), correct: false }));
+    choices = [{ label: correctLabel, correct: true }, ...wrongs].sort(() => Math.random() - 0.5);
+  } else {
+    const correctVal  = item.chord;
+    const correctType = CHORD_TYPES.find(c => c.val === correctVal);
+    const pool = CHORD_TYPES.filter(c => c.val !== correctVal);
+    const wrongs = pool.sort(() => Math.random() - 0.5).slice(0, 3)
+      .map(c => ({ label: c.label, correct: false }));
+    choices = [{ label: correctType?.label ?? correctVal, correct: true }, ...wrongs]
+      .sort(() => Math.random() - 0.5);
+  }
+
+  earChoices.style.display = 'grid';
+  earChoices.innerHTML = '';
+  const btns = choices.map(ch => {
+    const btn = document.createElement('button');
+    btn.className = 'ear-btn';
+    btn.textContent = ch.label;
+    btn.addEventListener('click', () => handleEarChoice(ch.correct, btn, btns, item));
+    earChoices.appendChild(btn);
+    return btn;
+  });
+}
+
+function handleEarChoice(isCorrect, clickedBtn, allBtns, item) {
+  if (earAnswered) return;
+  earAnswered = true;
+  allBtns.forEach(b => {
+    b.disabled = true;
+    if (b.dataset.correct === 'true') b.classList.add('correct');
+  });
+  if (!isCorrect) clickedBtn.classList.add('wrong');
+  else clickedBtn.classList.add('correct');
+
+  // Mark correct button (find it)
+  allBtns.forEach(b => { if (b._earCorrect) b.classList.add('correct'); });
+
+  setFeedbackState(isCorrect ? 'correct' : 'wrong');
+  // Reveal the actual note/chord in the display
+  const accChar = item.acc === '#' ? '♯' : item.acc === 'b' ? '♭' : '';
+  noteDisplay.innerHTML = accChar ? `${item.root}<sup>${accChar}</sup>` : item.root;
+  cancelAutoAdvance();
+  setTimeout(() => advance(), 1500);
+}
+
+// ─── SESSION SUMMARY ───────────────────────────────────────────────────────
+
+function openSummary() {
+  if (!summaryPanel) return;
+  const total = stats.correct + stats.wrong;
+  let html = `
+    <div class="summary-overall">
+      <div class="stat-row"><span>Correct</span><strong>${stats.correct}</strong></div>
+      <div class="stat-row"><span>Wrong</span><strong>${stats.wrong}</strong></div>
+      <div class="stat-row"><span>Accuracy</span><strong>${total > 0 ? Math.round(stats.correct/total*100)+'%' : '—'}</strong></div>
+      <div class="stat-row"><span>Best streak</span><strong>${stats.bestStreak}</strong></div>
+    </div>`;
+
+  const noteEntries = Object.entries(noteStats).sort((a,b) => (b[1].w - b[1].c) - (a[1].w - a[1].c));
+  if (noteEntries.length) {
+    html += `<div class="summary-section-title">Notes</div>
+      <table class="summary-table"><thead><tr><th>Note</th><th>✓</th><th>✗</th><th>Acc</th></tr></thead><tbody>`;
+    noteEntries.forEach(([key, s]) => {
+      const acc = s.c + s.w > 0 ? Math.round(s.c/(s.c+s.w)*100)+'%' : '—';
+      html += `<tr><td>${key.replace('#','♯').replace('b','♭')}</td><td>${s.c}</td><td>${s.w}</td><td>${acc}</td></tr>`;
+    });
+    html += '</tbody></table>';
+  }
+
+  const chordEntries = Object.entries(chordStats).sort((a,b) => (b[1].w - b[1].c) - (a[1].w - a[1].c));
+  if (chordEntries.length) {
+    html += `<div class="summary-section-title">Chords</div>
+      <table class="summary-table"><thead><tr><th>Chord</th><th>✓</th><th>✗</th><th>Acc</th></tr></thead><tbody>`;
+    chordEntries.forEach(([key, s]) => {
+      const label = CHORD_TYPES.find(c => c.val === key)?.label ?? key;
+      const acc = s.c + s.w > 0 ? Math.round(s.c/(s.c+s.w)*100)+'%' : '—';
+      html += `<tr><td>${label}</td><td>${s.c}</td><td>${s.w}</td><td>${acc}</td></tr>`;
+    });
+    html += '</tbody></table>';
+  }
+
+  if (!noteEntries.length && !chordEntries.length) {
+    html += `<p style="color:var(--text-dim);font-size:13px;margin-top:12px">No data yet — play some cards with an input source active.</p>`;
+  }
+
+  summaryBody.innerHTML = html;
+  summaryOverlay.style.display = '';
+  summaryPanel.style.display   = '';
+}
+
+function closeSummary() {
+  if (summaryOverlay) summaryOverlay.style.display = 'none';
+  if (summaryPanel)   summaryPanel.style.display   = 'none';
+}
 
 // ─── FEEDBACK STATE ────────────────────────────────────────────────────────
 
@@ -585,6 +805,9 @@ function setFeedbackState(s, detectedNote) {
     s === 'correct' ? 'var(--green)' :
     s === 'wrong'   ? 'var(--red)'   : 'var(--text-dim)';
 
+  // Play chime on correct transition
+  if (s === 'correct' && prev !== 'correct' && state.correctChime) playCorrectChime();
+
   // Auto-advance: trigger once when transitioning into 'correct'
   if (s === 'correct' && prev !== 'correct' && state.autoAdvanceOnCorrect && anyInputActive()) {
     cancelAutoAdvance();
@@ -598,13 +821,36 @@ function setFeedbackState(s, detectedNote) {
 
 function recordAdvance() {
   if (!anyInputActive()) return;
+  const noteKey  = state.current.root + state.current.acc;
+  const chordKey = state.current.chord;
+
   if (state.feedbackState === 'correct') {
     stats.correct++;
     stats.streak++;
     if (stats.streak > stats.bestStreak) stats.bestStreak = stats.streak;
+    // Decrease weight (floor at 1)
+    noteWeights[noteKey]  = Math.max(1, (noteWeights[noteKey]  ?? 1) / 1.15);
+    if (chordKey) chordWeights[chordKey] = Math.max(1, (chordWeights[chordKey] ?? 1) / 1.15);
+    // Per-note/chord stats
+    if (!noteStats[noteKey])  noteStats[noteKey]  = { c: 0, w: 0 };
+    noteStats[noteKey].c++;
+    if (chordKey) {
+      if (!chordStats[chordKey]) chordStats[chordKey] = { c: 0, w: 0 };
+      chordStats[chordKey].c++;
+    }
   } else if (state.feedbackState === 'wrong') {
     stats.wrong++;
     stats.streak = 0;
+    // Increase weight (cap at 8)
+    noteWeights[noteKey]  = Math.min(8, (noteWeights[noteKey]  ?? 1) * 1.8);
+    if (chordKey) chordWeights[chordKey] = Math.min(8, (chordWeights[chordKey] ?? 1) * 1.8);
+    // Per-note/chord stats
+    if (!noteStats[noteKey])  noteStats[noteKey]  = { c: 0, w: 0 };
+    noteStats[noteKey].w++;
+    if (chordKey) {
+      if (!chordStats[chordKey]) chordStats[chordKey] = { c: 0, w: 0 };
+      chordStats[chordKey].w++;
+    }
   }
   // neutral = not played, no penalty
   updateStatsUI();
@@ -627,6 +873,8 @@ function updateStatsUI() {
 
 function clearStats() {
   stats.correct = 0; stats.wrong = 0; stats.streak = 0; stats.bestStreak = 0;
+  Object.keys(noteStats).forEach(k => delete noteStats[k]);
+  Object.keys(chordStats).forEach(k => delete chordStats[k]);
   updateStatsUI();
 }
 
@@ -652,20 +900,22 @@ function renderIntervalDisplay(item) {
 function renderDisplay(item, animate = true) {
   if (!item) return;
   cancelAutoAdvance();
+  if (earHintTimer) { clearTimeout(earHintTimer); earHintTimer = null; }
   state.current = item;
 
-  const accChar = item.acc === '#' ? '♯' : item.acc === 'b' ? '♭' : '';
-  const inner   = accChar ? `${item.root}<sup>${accChar}</sup>` : item.root;
+  const accChar     = item.acc === '#' ? '♯' : item.acc === 'b' ? '♭' : '';
+  const inner       = accChar ? `${item.root}<sup>${accChar}</sup>` : item.root;
+  const displayInner = state.earMode ? '?' : inner;
 
   if (animate) {
     noteDisplay.classList.add('flash-out');
     setTimeout(() => {
-      noteDisplay.innerHTML = inner;
+      noteDisplay.innerHTML = displayInner;
       noteDisplay.classList.remove('flash-out', 'flash-in');
       void noteDisplay.offsetWidth;
       noteDisplay.classList.add('flash-in');
 
-      if (state.mode === 'chord' && item.chord !== null) {
+      if (!state.earMode && state.mode === 'chord' && item.chord !== null) {
         const ct = CHORD_TYPES.find(c => c.val === item.chord);
         chordQuality.style.opacity   = 0;
         chordQuality.textContent     = ct ? ct.label : '';
@@ -677,11 +927,11 @@ function renderDisplay(item, animate = true) {
         chordQuality.textContent   = '';
         chordQuality.style.opacity = '0';
       }
-      renderIntervalDisplay(item);
+      if (!state.earMode) { renderIntervalDisplay(item); renderPianoVoicing(item); }
     }, 140);
   } else {
-    noteDisplay.innerHTML = inner;
-    if (state.mode === 'chord' && item.chord !== null) {
+    noteDisplay.innerHTML = displayInner;
+    if (!state.earMode && state.mode === 'chord' && item.chord !== null) {
       const ct = CHORD_TYPES.find(c => c.val === item.chord);
       chordQuality.textContent   = ct ? ct.label : '';
       chordQuality.style.opacity = '1';
@@ -689,24 +939,38 @@ function renderDisplay(item, animate = true) {
       chordQuality.textContent   = '';
       chordQuality.style.opacity = '0';
     }
-    renderIntervalDisplay(item);
+    if (!state.earMode) { renderIntervalDisplay(item); renderPianoVoicing(item); }
   }
 
   setFeedbackState('neutral');
-  // If a MIDI keyboard is held, immediately check new target instead of waiting for next keypress
-  if (state.midiActive && heldMidiNotes.size > 0) evaluateMidi();
+
+  if (state.earMode) {
+    showEarChoices(item);
+    earHintTimer = setTimeout(() => { earHintTimer = null; playHint(); }, 700);
+  } else {
+    if (state.midiActive && heldMidiNotes.size > 0) evaluateMidi();
+  }
   updateGlowPosition();
 }
 
 function updateModeUI() {
-  modeLabel.textContent = state.mode === 'note' ? 'Note' : 'Chord';
+  const label = state.earMode ? 'Ear' : (state.mode === 'note' ? 'Note' : 'Chord');
+  modeLabel.textContent = label;
   modeLabel.style.animation = 'none';
   void modeLabel.offsetWidth;
   modeLabel.style.animation = '';
   chordSection.style.display = state.mode === 'chord' ? '' : 'none';
   document.querySelectorAll('.mode-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.mode === state.mode);
+    if (b.dataset.mode === 'ear') {
+      b.classList.toggle('active', state.earMode);
+    } else {
+      b.classList.toggle('active', b.dataset.mode === state.mode && !state.earMode);
+    }
   });
+  if (!state.earMode) {
+    if (earChoices)   { earChoices.innerHTML = ''; earChoices.style.display = 'none'; }
+    if (pianoDisplay && state.mode !== 'chord') pianoDisplay.style.opacity = '0';
+  }
 }
 
 // ─── TIMER ─────────────────────────────────────────────────────────────────
@@ -798,6 +1062,11 @@ loadSettings();
   intervalVal.textContent    = state.interval + 's';
   sensitivitySlider.value    = state.micSensitivity;
   sensitivityVal.textContent = state.micSensitivity;
+  if (midiLowSlider) {
+    const oct = state.midiMinNote > 0 ? Math.round((state.midiMinNote - 24) / 12) : 0;
+    midiLowSlider.value = oct;
+    midiLowVal.textContent = oct === 0 ? 'All' : 'C' + (oct + 1);
+  }
   syncToggles();
 
   const item = nextItem(false);
@@ -905,6 +1174,13 @@ document.addEventListener('click', e => {
 function syncToggles() {
   document.getElementById('ticksToggle').classList.toggle('on', state.ticksEnabled);
   document.getElementById('autoAdvanceToggle').classList.toggle('on', state.autoAdvanceOnCorrect);
+  const ct = document.getElementById('chimeToggle');
+  if (ct) ct.classList.toggle('on', state.correctChime);
+  if (midiLowSlider) {
+    const octave = state.midiMinNote > 0 ? Math.round((state.midiMinNote - 24) / 12) : 0;
+    midiLowSlider.value = octave;
+    if (midiLowVal) midiLowVal.textContent = octave === 0 ? 'All' : 'C' + (octave + 1);
+  }
 }
 
 document.addEventListener('click', e => {
@@ -919,6 +1195,10 @@ document.addEventListener('click', e => {
     state.autoAdvanceOnCorrect = !state.autoAdvanceOnCorrect;
     tog.classList.toggle('on', state.autoAdvanceOnCorrect);
     if (!state.autoAdvanceOnCorrect) cancelAutoAdvance();
+    saveSettings();
+  } else if (key === 'chime') {
+    state.correctChime = !state.correctChime;
+    tog.classList.toggle('on', state.correctChime);
     saveSettings();
   }
 });
@@ -938,12 +1218,40 @@ sensitivitySlider.addEventListener('input', () => {
   saveSettings();
 });
 
+if (midiLowSlider) {
+  midiLowSlider.addEventListener('input', () => {
+    const oct = parseInt(midiLowSlider.value);
+    state.midiMinNote = oct > 0 ? oct * 12 + 24 : 0; // oct 1 → C2(MIDI 36), oct 2 → C3(48)...
+    midiLowVal.textContent = oct === 0 ? 'All' : 'C' + (oct + 1);
+    saveSettings();
+  });
+}
+
+if (midiLowSlider) {
+  midiLowSlider.addEventListener('input', () => {
+    const val = parseInt(midiLowSlider.value);
+    state.midiMinNote = val === 0 ? 0 : val * 12 + 24;
+    if (midiLowVal) midiLowVal.textContent = val === 0 ? 'All' : 'C' + (val + 1);
+    saveSettings();
+  });
+}
+
 // ─── MODE BUTTONS ──────────────────────────────────────────────────────────
 
 document.querySelectorAll('.mode-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    if (btn.dataset.mode === state.mode) return;
+    if (btn.dataset.mode === 'ear') {
+      state.earMode = !state.earMode;
+      updateModeUI();
+      const cur = history[histIdx];
+      if (cur) renderDisplay(cur, false);
+      saveSettings();
+      return;
+    }
+    // note or chord
+    if (btn.dataset.mode === state.mode && !state.earMode) return;
     state.mode = btn.dataset.mode;
+    state.earMode = false;
     updateModeUI();
     const item = nextItem(false);
     if (item) { history.length = 0; history.push(item); histIdx = 0; renderDisplay(item); }
@@ -1013,6 +1321,10 @@ overlay.addEventListener('click', closeSettingsPanel);
 closePanel.addEventListener('click', closeSettingsPanel);
 
 document.getElementById('clearStatsBtn').addEventListener('click', clearStats);
+if (summaryBtn) summaryBtn.addEventListener('click', openSummary);
+if (summaryOverlay) summaryOverlay.addEventListener('click', closeSummary);
+const closeSummaryBtn = document.getElementById('closeSummary');
+if (closeSummaryBtn) closeSummaryBtn.addEventListener('click', closeSummary);
 
 // ─── RESET ─────────────────────────────────────────────────────────────────
 
@@ -1021,6 +1333,10 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   state.micSensitivity = 5;         sensitivitySlider.value = 5; sensitivityVal.textContent = '5';
   state.ticksEnabled = true;
   state.autoAdvanceOnCorrect = false;
+  state.correctChime = true;
+  state.midiMinNote = 0;
+  state.earMode = false;
+  if (midiLowSlider) { midiLowSlider.value = 0; midiLowVal.textContent = 'All'; }
   syncToggles();
   state.activeNotes  = new Set(ROOT_NOTES);
   state.activeAcc    = new Set(['natural','sharp','flat']);

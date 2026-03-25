@@ -15,6 +15,9 @@
   --green-glow: rgba(76,201,124,0.2);
   --red-glow: rgba(201,76,76,0.2);
   --radius: 12px;
+  --piano-white: #f0ece4;
+  --piano-black: #1c1c22;
+  --piano-border: rgba(0,0,0,0.15);
 }
 
 /* ── LIGHT THEME ── */
@@ -32,6 +35,9 @@
   --green: #228844;
   --green-glow: rgba(34,136,68,0.15);
   --red-glow: rgba(184,48,48,0.15);
+  --piano-white: #fafaf8;
+  --piano-black: #1c1c22;
+  --piano-border: rgba(0,0,0,0.1);
 }
 
 body {
@@ -682,4 +688,142 @@ kbd {
   position: relative;
   z-index: 1;
   opacity: 0.7;
+}
+
+/* ── PIANO VOICING ── */
+.piano-display {
+  margin-top: 10px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  min-height: 42px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── MIDI NOTE DISPLAY ── */
+.midi-note-display {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  min-height: 18px;
+  margin-top: 6px;
+  text-align: center;
+  font-family: 'Syne', sans-serif;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── EAR TRAINING CHOICES ── */
+.ear-choices {
+  display: none;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 16px;
+  width: 100%;
+  max-width: 280px;
+  position: relative;
+  z-index: 1;
+}
+
+.ear-btn {
+  padding: 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--text);
+  font-family: 'Syne', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  text-align: center;
+}
+.ear-btn:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--gold);
+}
+.ear-btn:disabled { cursor: default; }
+.ear-btn.correct {
+  border-color: var(--green);
+  background: rgba(76,201,124,0.12);
+  color: var(--green);
+}
+.ear-btn.wrong {
+  border-color: var(--red);
+  background: rgba(201,76,76,0.12);
+  color: var(--red);
+}
+
+/* ── SESSION SUMMARY MODAL ── */
+.summary-panel {
+  position: fixed;
+  z-index: 210;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: min(94vw, 440px);
+  max-height: 85vh;
+  overflow-y: auto;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.summary-body {
+  padding: 0 20px 20px;
+}
+
+.summary-overall {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--surface2);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.stat-row strong { font-weight: 600; color: var(--gold); }
+
+.summary-section-title {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 16px 0 6px;
+}
+
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.summary-table th {
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: 500;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.summary-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--surface2);
+}
+.summary-table tr:last-child td { border-bottom: none; }
+
+/* ── SETTINGS FIELD DESC ── */
+.s-field-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  line-height: 1.4;
 }

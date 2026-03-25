@@ -21,6 +21,7 @@
     <div class="mode-pill">
       <button class="mode-btn active" data-mode="note">Note</button>
       <button class="mode-btn" data-mode="chord">Chord</button>
+      <button class="mode-btn" data-mode="ear">Ear</button>
     </div>
     <div class="icon-btn" id="themeBtn" title="Toggle theme">
       <svg class="icon-dark" viewBox="0 0 24 24" fill="currentColor">
@@ -54,7 +55,10 @@
   </div>
   <div class="chord-quality" id="chordQuality"></div>
   <div class="interval-display" id="intervalDisplay"></div>
+  <div class="piano-display" id="pianoDisplay"></div>
   <div class="feedback-label" id="feedbackLabel"></div>
+  <div class="midi-note-display" id="midiNoteDisplay"></div>
+  <div class="ear-choices" id="earChoices"></div>
 </div>
 
 <div class="streak-row" id="streakRow" style="display:none">
@@ -146,6 +150,16 @@
       </div>
     </div>
 
+    <!-- MIDI -->
+    <div class="s-section" id="midiFilterSection">
+      <div class="s-section-title">MIDI</div>
+      <div class="slider-row">
+        <input type="range" id="midiLowSlider" min="0" max="5" value="0" step="1">
+        <div class="slider-val" id="midiLowVal">All</div>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Ignore notes below octave (0=all, 1=C2, 2=C3…)</div>
+    </div>
+
     <!-- Behaviour Toggles -->
     <div class="s-section">
       <div class="s-section-title">Behaviour</div>
@@ -165,6 +179,15 @@
             <div class="toggle-desc">Advance 1.2 s after mic detects correct</div>
           </div>
           <div class="setting-toggle" id="autoAdvanceToggle" data-key="autoAdvance">
+            <div class="toggle-thumb"></div>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Correct chime</div>
+            <div class="toggle-desc">Sound when correct answer detected</div>
+          </div>
+          <div class="setting-toggle on" id="chimeToggle" data-key="chime">
             <div class="toggle-thumb"></div>
           </div>
         </div>
@@ -227,7 +250,10 @@
           <span class="stat-name">Accuracy</span>
         </div>
       </div>
-      <button class="reset-btn" id="clearStatsBtn" style="margin-top:10px">Clear Stats</button>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="summary-btn" id="summaryBtn">Summary</button>
+        <button class="reset-btn" id="clearStatsBtn" style="margin-top:0;flex:1">Clear Stats</button>
+      </div>
     </div>
 
     <!-- Reset -->
@@ -250,6 +276,15 @@
     </div>
 
   </div>
+</div>
+
+<div class="overlay" id="summaryOverlay" style="display:none"></div>
+<div class="summary-panel" id="summaryPanel" style="display:none">
+  <div class="panel-header">
+    <div class="panel-title">Session Summary</div>
+    <div class="close-btn" id="closeSummary">✕</div>
+  </div>
+  <div class="summary-body" id="summaryBody"></div>
 </div>
 
 <script src="app.js"></script>
