@@ -586,7 +586,7 @@ function setFeedbackState(s, detectedNote) {
     s === 'wrong'   ? 'var(--red)'   : 'var(--text-dim)';
 
   // Auto-advance: trigger once when transitioning into 'correct'
-  if (s === 'correct' && prev !== 'correct' && state.autoAdvanceOnCorrect && state.micActive) {
+  if (s === 'correct' && prev !== 'correct' && state.autoAdvanceOnCorrect && anyInputActive()) {
     cancelAutoAdvance();
     autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; advance(); }, 1200);
   } else if (s !== 'correct') {
@@ -693,6 +693,8 @@ function renderDisplay(item, animate = true) {
   }
 
   setFeedbackState('neutral');
+  // If a MIDI keyboard is held, immediately check new target instead of waiting for next keypress
+  if (state.midiActive && heldMidiNotes.size > 0) evaluateMidi();
   updateGlowPosition();
 }
 
