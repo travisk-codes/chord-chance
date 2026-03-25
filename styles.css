@@ -697,6 +697,7 @@ kbd {
   transition: opacity 0.3s;
   min-height: 42px;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   position: relative;
@@ -819,6 +820,58 @@ kbd {
   border-bottom: 1px solid var(--surface2);
 }
 .summary-table tr:last-child td { border-bottom: none; }
+
+/* ── EAR REPLAY BUTTON ── */
+.ear-replay-btn {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: 'Syne', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+.ear-replay-btn:hover {
+  color: var(--text);
+  border-color: var(--gold);
+}
+
+/* ── INVERSION LABEL ── */
+.inv-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-top: 5px;
+  text-align: center;
+  font-family: 'Syne', sans-serif;
+}
+
+/* ── SUMMARY COPY BUTTON ── */
+.summary-copy-btn {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: 'Syne', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.summary-copy-btn:hover {
+  color: var(--text);
+  border-color: var(--gold);
+}
 
 /* ── SETTINGS FIELD DESC ── */
 .s-field-desc {

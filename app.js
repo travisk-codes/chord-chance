@@ -64,6 +64,11 @@ const state = {
   correctChime: true,
   midiMinNote: 0,
   earMode: false,
+  weakSpotsOnly: false,
+  bpmMode: false,
+  bpm: 80,
+  showInversions: false,
+  currentInversion: 0,
 };
 
 function anyInputActive() {
@@ -76,6 +81,29 @@ const noteWeights = {};
 const chordWeights = {};
 const noteStats = {};
 const chordStats = {};
+
+function saveStats() {
+  try {
+    localStorage.setItem('cc2_stats', JSON.stringify({
+      correct: stats.correct, wrong: stats.wrong, bestStreak: stats.bestStreak,
+      noteStats, chordStats, noteWeights, chordWeights,
+    }));
+  } catch(e) {}
+}
+
+function loadStats() {
+  try {
+    const s = JSON.parse(localStorage.getItem('cc2_stats') || 'null');
+    if (!s) return;
+    if (typeof s.correct === 'number')    stats.correct    = s.correct;
+    if (typeof s.wrong === 'number')      stats.wrong      = s.wrong;
+    if (typeof s.bestStreak === 'number') stats.bestStreak = s.bestStreak;
+    if (s.noteStats)    Object.assign(noteStats,    s.noteStats);
+    if (s.chordStats)   Object.assign(chordStats,   s.chordStats);
+    if (s.noteWeights)  Object.assign(noteWeights,  s.noteWeights);
+    if (s.chordWeights) Object.assign(chordWeights, s.chordWeights);
+  } catch(e) {}
+}
 
 // ─── SETTINGS PERSISTENCE ──────────────────────────────────────────────────
 
@@ -93,6 +121,10 @@ function saveSettings() {
       correctChime:         state.correctChime,
       midiMinNote:          state.midiMinNote,
       earMode:              state.earMode,
+      weakSpotsOnly:        state.weakSpotsOnly,
+      bpmMode:              state.bpmMode,
+      bpm:                  state.bpm,
+      showInversions:       state.showInversions,
     }));
   } catch(e) {}
 }
@@ -112,6 +144,10 @@ function loadSettings() {
     if (typeof s.correctChime === 'boolean') state.correctChime = s.correctChime;
     if (typeof s.midiMinNote === 'number') state.midiMinNote = s.midiMinNote;
     if (typeof s.earMode === 'boolean') state.earMode = s.earMode;
+    if (typeof s.weakSpotsOnly === 'boolean') state.weakSpotsOnly = s.weakSpotsOnly;
+    if (typeof s.bpmMode === 'boolean') state.bpmMode = s.bpmMode;
+    if (typeof s.bpm === 'number') state.bpm = s.bpm;
+    if (typeof s.showInversions === 'boolean') state.showInversions = s.showInversions;
   } catch(e) {}
 }
 
@@ -165,11 +201,25 @@ function weightedRandom(arr, keyFn, weightMap) {
   return arr[arr.length - 1];
 }
 
+function isWeak(key, statMap) {
+  const s = statMap[key];
+  return s && (s.c + s.w) >= 3 && s.c / (s.c + s.w) < 0.6;
+}
+
 function nextItem(avoidCurrent = true) {
-  const pool = buildPool();
+  let pool = buildPool();
   if (!pool.length) return null;
-  const chordPool = [...state.activeChords];
+  let chordPool = [...state.activeChords];
   if (state.mode === 'chord' && !chordPool.length) return null;
+
+  if (state.weakSpotsOnly) {
+    const weakNotes = pool.filter(item => isWeak(item.root + item.acc, noteStats));
+    if (weakNotes.length) pool = weakNotes;
+    if (state.mode === 'chord') {
+      const weakChords = chordPool.filter(v => isWeak(v, chordStats));
+      if (weakChords.length) chordPool = weakChords;
+    }
+  }
 
   let candidate, tries = 0;
   do {
@@ -184,6 +234,14 @@ function nextItem(avoidCurrent = true) {
       chord = weightedRandom(chordPool, v => v, chordWeights);
       chordTries++;
     } while (avoidCurrent && chordTries < 8 && chord === state.current.chord);
+  }
+
+  if (state.showInversions && chord) {
+    const ct = CHORD_TYPES.find(c => c.val === chord);
+    const maxInv = ct ? Math.min(ct.intervals.length - 1, 3) : 0;
+    state.currentInversion = maxInv > 0 ? Math.floor(Math.random() * (maxInv + 1)) : 0;
+  } else {
+    state.currentInversion = 0;
   }
 
   return { root: candidate.root, acc: candidate.acc, chord };
@@ -491,6 +549,7 @@ function stopDesktopAudio() {
 const heldMidiNotes = new Set(); // MIDI note numbers currently held
 
 function evaluateMidi() {
+  if (state.earMode) return;
   if (heldMidiNotes.size === 0) {
     setFeedbackState('neutral');
     if (midiNoteDisplay) midiNoteDisplay.textContent = '';
@@ -654,6 +713,42 @@ function buildPianoSVG(highlightPCs) {
   return s + '</svg>';
 }
 
+// 2-octave piano (C4–B5) for inversion voicings
+function buildPianoSVG2Oct(highlightMidi) {
+  const hi = new Set(highlightMidi);
+  const W=182, H=48, BH=30;
+  const WHITE = [
+    {m:60,x:0},{m:62,x:13},{m:64,x:26},{m:65,x:39},{m:67,x:52},{m:69,x:65},{m:71,x:78},
+    {m:72,x:91},{m:74,x:104},{m:76,x:117},{m:77,x:130},{m:79,x:143},{m:81,x:156},{m:83,x:169},
+  ];
+  const BLACK = [
+    {m:61,x:9},{m:63,x:22},{m:66,x:48},{m:68,x:61},{m:70,x:74},
+    {m:73,x:100},{m:75,x:113},{m:78,x:139},{m:80,x:152},{m:82,x:165},
+  ];
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block">`;
+  WHITE.forEach(k => {
+    const lit = hi.has(k.m);
+    s += `<rect x="${k.x}" y="0" width="12" height="${H}" rx="1" fill="${lit?'var(--green)':'var(--piano-white)'}" stroke="var(--piano-border)" stroke-width="0.5"/>`;
+  });
+  BLACK.forEach(k => {
+    const lit = hi.has(k.m);
+    s += `<rect x="${k.x}" y="0" width="8" height="${BH}" rx="1" fill="${lit?'var(--green)':'var(--piano-black)'}"/>`;
+  });
+  s += `<line x1="91" y1="0" x2="91" y2="${H}" stroke="var(--piano-border)" stroke-width="1" opacity="0.35"/>`;
+  return s + '</svg>';
+}
+
+function getVoicingMidi(rootPC, intervals, inversion) {
+  let notes = intervals.map(i => 60 + rootPC + i);
+  for (let i = 0; i < inversion; i++) {
+    notes[0] += 12;
+    notes.sort((a, b) => a - b);
+  }
+  return notes;
+}
+
+const INV_LABELS = ['Root pos.', '1st inv.', '2nd inv.', '3rd inv.'];
+
 function renderPianoVoicing(item) {
   if (!pianoDisplay) return;
   if (!item || state.mode !== 'chord' || !item.chord) {
@@ -664,8 +759,16 @@ function renderPianoVoicing(item) {
   if (!ct) { pianoDisplay.style.opacity = '0'; return; }
   const root = item.root + (item.acc === '#' ? '#' : item.acc === 'b' ? 'b' : '');
   const rootPC = NOTE_TO_SEMITONE[root] ?? 0;
-  const pcs = new Set(ct.intervals.map(i => (rootPC + i) % 12));
-  pianoDisplay.innerHTML = buildPianoSVG(pcs);
+
+  if (state.showInversions) {
+    const midiNotes = getVoicingMidi(rootPC, ct.intervals, state.currentInversion);
+    const label = INV_LABELS[state.currentInversion] ?? 'Root pos.';
+    pianoDisplay.innerHTML = buildPianoSVG2Oct(midiNotes) +
+      `<div class="inv-label">${label}</div>`;
+  } else {
+    const pcs = new Set(ct.intervals.map(i => (rootPC + i) % 12));
+    pianoDisplay.innerHTML = buildPianoSVG(pcs);
+  }
   pianoDisplay.style.opacity = '1';
 }
 
@@ -706,31 +809,78 @@ function showEarChoices(item) {
     const btn = document.createElement('button');
     btn.className = 'ear-btn';
     btn.textContent = ch.label;
+    btn._earCorrect = ch.correct;
     btn.addEventListener('click', () => handleEarChoice(ch.correct, btn, btns, item));
     earChoices.appendChild(btn);
     return btn;
   });
+
+  const replay = document.createElement('button');
+  replay.className = 'ear-replay-btn';
+  replay.textContent = '↺ Replay';
+  replay.title = 'Replay hint (H)';
+  replay.style.gridColumn = '1 / -1';
+  replay.addEventListener('click', playHint);
+  earChoices.appendChild(replay);
+}
+
+function recordEarAnswer(isCorrect, item) {
+  const noteKey  = item.root + item.acc;
+  const chordKey = item.chord;
+  if (isCorrect) {
+    stats.correct++;
+    stats.streak++;
+    if (stats.streak > stats.bestStreak) stats.bestStreak = stats.streak;
+    noteWeights[noteKey]  = Math.max(1, (noteWeights[noteKey]  ?? 1) / 1.15);
+    if (chordKey) chordWeights[chordKey] = Math.max(1, (chordWeights[chordKey] ?? 1) / 1.15);
+    if (!noteStats[noteKey])  noteStats[noteKey]  = { c: 0, w: 0 };
+    noteStats[noteKey].c++;
+    if (chordKey) {
+      if (!chordStats[chordKey]) chordStats[chordKey] = { c: 0, w: 0 };
+      chordStats[chordKey].c++;
+    }
+  } else {
+    stats.wrong++;
+    stats.streak = 0;
+    noteWeights[noteKey]  = Math.min(8, (noteWeights[noteKey]  ?? 1) * 1.8);
+    if (chordKey) chordWeights[chordKey] = Math.min(8, (chordWeights[chordKey] ?? 1) * 1.8);
+    if (!noteStats[noteKey])  noteStats[noteKey]  = { c: 0, w: 0 };
+    noteStats[noteKey].w++;
+    if (chordKey) {
+      if (!chordStats[chordKey]) chordStats[chordKey] = { c: 0, w: 0 };
+      chordStats[chordKey].w++;
+    }
+  }
+  updateStatsUI();
+  saveStats();
 }
 
 function handleEarChoice(isCorrect, clickedBtn, allBtns, item) {
   if (earAnswered) return;
   earAnswered = true;
+
   allBtns.forEach(b => {
     b.disabled = true;
-    if (b.dataset.correct === 'true') b.classList.add('correct');
+    if (b._earCorrect) b.classList.add('correct');
   });
   if (!isCorrect) clickedBtn.classList.add('wrong');
-  else clickedBtn.classList.add('correct');
 
-  // Mark correct button (find it)
-  allBtns.forEach(b => { if (b._earCorrect) b.classList.add('correct'); });
-
+  recordEarAnswer(isCorrect, item);
   setFeedbackState(isCorrect ? 'correct' : 'wrong');
-  // Reveal the actual note/chord in the display
+
+  // Reveal the note/chord display
   const accChar = item.acc === '#' ? '♯' : item.acc === 'b' ? '♭' : '';
   noteDisplay.innerHTML = accChar ? `${item.root}<sup>${accChar}</sup>` : item.root;
+  if (item.chord) {
+    const ct = CHORD_TYPES.find(c => c.val === item.chord);
+    chordQuality.textContent   = ct ? ct.label : '';
+    chordQuality.style.opacity = '1';
+    renderIntervalDisplay(item);
+    renderPianoVoicing(item);
+  }
+
   cancelAutoAdvance();
-  setTimeout(() => advance(), 1500);
+  setTimeout(() => advance(), 1800);
 }
 
 // ─── SESSION SUMMARY ───────────────────────────────────────────────────────
@@ -773,9 +923,34 @@ function openSummary() {
     html += `<p style="color:var(--text-dim);font-size:13px;margin-top:12px">No data yet — play some cards with an input source active.</p>`;
   }
 
+  html += `<button class="summary-copy-btn" onclick="copySummaryToClipboard()">Copy to clipboard</button>`;
   summaryBody.innerHTML = html;
   summaryOverlay.style.display = '';
   summaryPanel.style.display   = '';
+}
+
+function copySummaryToClipboard() {
+  const total = stats.correct + stats.wrong;
+  let text = `Chord Chance — Session Summary\n`;
+  text += `Correct: ${stats.correct}  Wrong: ${stats.wrong}  Accuracy: ${total > 0 ? Math.round(stats.correct/total*100)+'%' : '—'}  Best streak: ${stats.bestStreak}\n`;
+  const noteEntries = Object.entries(noteStats).sort((a,b) => (b[1].w - b[1].c) - (a[1].w - a[1].c));
+  if (noteEntries.length) {
+    text += `\nNotes\n`;
+    noteEntries.forEach(([key, s]) => {
+      const acc = s.c + s.w > 0 ? Math.round(s.c/(s.c+s.w)*100)+'%' : '—';
+      text += `  ${key.replace('#','♯').replace('b','♭')}  ✓${s.c}  ✗${s.w}  ${acc}\n`;
+    });
+  }
+  const chordEntries = Object.entries(chordStats).sort((a,b) => (b[1].w - b[1].c) - (a[1].w - a[1].c));
+  if (chordEntries.length) {
+    text += `\nChords\n`;
+    chordEntries.forEach(([key, s]) => {
+      const label = CHORD_TYPES.find(c => c.val === key)?.label ?? key;
+      const acc = s.c + s.w > 0 ? Math.round(s.c/(s.c+s.w)*100)+'%' : '—';
+      text += `  ${label}  ✓${s.c}  ✗${s.w}  ${acc}\n`;
+    });
+  }
+  navigator.clipboard.writeText(text).catch(() => {});
 }
 
 function closeSummary() {
@@ -854,6 +1029,7 @@ function recordAdvance() {
   }
   // neutral = not played, no penalty
   updateStatsUI();
+  saveStats();
 }
 
 function updateStatsUI() {
@@ -875,7 +1051,10 @@ function clearStats() {
   stats.correct = 0; stats.wrong = 0; stats.streak = 0; stats.bestStreak = 0;
   Object.keys(noteStats).forEach(k => delete noteStats[k]);
   Object.keys(chordStats).forEach(k => delete chordStats[k]);
+  Object.keys(noteWeights).forEach(k => delete noteWeights[k]);
+  Object.keys(chordWeights).forEach(k => delete chordWeights[k]);
   updateStatsUI();
+  saveStats();
 }
 
 // ─── INTERVAL DISPLAY ──────────────────────────────────────────────────────
@@ -1053,13 +1232,32 @@ function goForward() {
 
 function advance() { advanceWithHistory(); }
 
+// ─── INTERVAL UI ───────────────────────────────────────────────────────────
+
+function updateIntervalUI() {
+  if (state.bpmMode) {
+    intervalSlider.min   = '40';
+    intervalSlider.max   = '200';
+    intervalSlider.step  = '5';
+    intervalSlider.value = state.bpm;
+    intervalVal.textContent = state.bpm + ' BPM';
+    state.interval = Math.round(60 / state.bpm * 10) / 10;
+  } else {
+    intervalSlider.min   = '2';
+    intervalSlider.max   = '30';
+    intervalSlider.step  = '1';
+    intervalSlider.value = state.interval;
+    intervalVal.textContent = state.interval + 's';
+  }
+}
+
 // ─── INIT ──────────────────────────────────────────────────────────────────
 
 loadSettings();
+loadStats();
 
 (function init() {
-  intervalSlider.value       = state.interval;
-  intervalVal.textContent    = state.interval + 's';
+  updateIntervalUI();
   sensitivitySlider.value    = state.micSensitivity;
   sensitivityVal.textContent = state.micSensitivity;
   if (midiLowSlider) {
@@ -1176,6 +1374,12 @@ function syncToggles() {
   document.getElementById('autoAdvanceToggle').classList.toggle('on', state.autoAdvanceOnCorrect);
   const ct = document.getElementById('chimeToggle');
   if (ct) ct.classList.toggle('on', state.correctChime);
+  const bt = document.getElementById('bpmModeToggle');
+  if (bt) bt.classList.toggle('on', state.bpmMode);
+  const wt = document.getElementById('weakSpotsToggle');
+  if (wt) wt.classList.toggle('on', state.weakSpotsOnly);
+  const it = document.getElementById('inversionsToggle');
+  if (it) it.classList.toggle('on', state.showInversions);
   if (midiLowSlider) {
     const octave = state.midiMinNote > 0 ? Math.round((state.midiMinNote - 24) / 12) : 0;
     midiLowSlider.value = octave;
@@ -1200,14 +1404,45 @@ document.addEventListener('click', e => {
     state.correctChime = !state.correctChime;
     tog.classList.toggle('on', state.correctChime);
     saveSettings();
+  } else if (key === 'bpmMode') {
+    state.bpmMode = !state.bpmMode;
+    tog.classList.toggle('on', state.bpmMode);
+    updateIntervalUI();
+    if (state.playing) startTimer();
+    saveSettings();
+  } else if (key === 'weakSpots') {
+    state.weakSpotsOnly = !state.weakSpotsOnly;
+    tog.classList.toggle('on', state.weakSpotsOnly);
+    saveSettings();
+  } else if (key === 'inversions') {
+    state.showInversions = !state.showInversions;
+    tog.classList.toggle('on', state.showInversions);
+    const cur = history[histIdx];
+    if (cur && state.mode === 'chord' && !state.earMode) {
+      if (state.showInversions) {
+        const ct = CHORD_TYPES.find(c => c.val === cur.chord);
+        const maxInv = ct ? Math.min(ct.intervals.length - 1, 3) : 0;
+        state.currentInversion = maxInv > 0 ? Math.floor(Math.random() * (maxInv + 1)) : 0;
+      } else {
+        state.currentInversion = 0;
+      }
+      renderPianoVoicing(cur);
+    }
+    saveSettings();
   }
 });
 
 // ─── SLIDERS ───────────────────────────────────────────────────────────────
 
 intervalSlider.addEventListener('input', () => {
-  state.interval = parseInt(intervalSlider.value);
-  intervalVal.textContent = state.interval + 's';
+  if (state.bpmMode) {
+    state.bpm = parseInt(intervalSlider.value);
+    state.interval = Math.round(60 / state.bpm * 10) / 10;
+    intervalVal.textContent = state.bpm + ' BPM';
+  } else {
+    state.interval = parseInt(intervalSlider.value);
+    intervalVal.textContent = state.interval + 's';
+  }
   if (state.playing) startTimer();
   saveSettings();
 });
@@ -1232,7 +1467,13 @@ if (midiLowSlider) {
 document.querySelectorAll('.mode-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (btn.dataset.mode === 'ear') {
-      state.earMode = !state.earMode;
+      if (state.mode === 'note') {
+        // Ear training is chord recognition; auto-switch to chord mode
+        state.mode = 'chord';
+        state.earMode = true;
+      } else {
+        state.earMode = !state.earMode;
+      }
       updateModeUI();
       const cur = history[histIdx];
       if (cur) renderDisplay(cur, false);
@@ -1327,7 +1568,13 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   state.correctChime = true;
   state.midiMinNote = 0;
   state.earMode = false;
+  state.weakSpotsOnly = false;
+  state.bpmMode = false;
+  state.bpm = 80;
+  state.showInversions = false;
+  state.currentInversion = 0;
   if (midiLowSlider) { midiLowSlider.value = 0; midiLowVal.textContent = 'All'; }
+  updateIntervalUI();
   syncToggles();
   updateModeUI();
   state.activeNotes  = new Set(ROOT_NOTES);
@@ -1356,4 +1603,12 @@ document.addEventListener('keydown', e => {
   if (e.key === 'm') { if (state.micActive) stopMic(); else startMic(); }
   if (e.key === 'd') { if (state.desktopActive) stopDesktopAudio(); else startDesktopAudio(); }
   if (e.key === 'h') playHint();
+  if (e.key === 'e') {
+    if (state.mode === 'note') { state.mode = 'chord'; state.earMode = true; }
+    else state.earMode = !state.earMode;
+    updateModeUI();
+    const cur = history[histIdx];
+    if (cur) renderDisplay(cur, false);
+    saveSettings();
+  }
 });
