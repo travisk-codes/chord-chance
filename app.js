@@ -45,6 +45,8 @@ const state = {
   playing: false,
   interval: 5,
   micSensitivity: 5,
+  ticksEnabled: true,
+  autoAdvanceOnCorrect: false,
   activeNotes: new Set(ROOT_NOTES),
   activeAcc: new Set(['natural','sharp','flat']),
   activeChords: new Set(CHORD_TYPES.map(c => c.val)),
@@ -64,12 +66,14 @@ const stats = { correct: 0, wrong: 0, streak: 0, bestStreak: 0 };
 function saveSettings() {
   try {
     localStorage.setItem('cc2_settings', JSON.stringify({
-      interval:        state.interval,
-      micSensitivity:  state.micSensitivity,
-      activeNotes:     [...state.activeNotes],
-      activeAcc:       [...state.activeAcc],
-      activeChords:    [...state.activeChords],
-      mode:            state.mode,
+      interval:             state.interval,
+      micSensitivity:       state.micSensitivity,
+      ticksEnabled:         state.ticksEnabled,
+      autoAdvanceOnCorrect: state.autoAdvanceOnCorrect,
+      activeNotes:          [...state.activeNotes],
+      activeAcc:            [...state.activeAcc],
+      activeChords:         [...state.activeChords],
+      mode:                 state.mode,
     }));
   } catch(e) {}
 }
@@ -78,8 +82,10 @@ function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem('cc2_settings') || 'null');
     if (!s) return;
-    if (typeof s.interval === 'number')       state.interval       = s.interval;
-    if (typeof s.micSensitivity === 'number') state.micSensitivity = s.micSensitivity;
+    if (typeof s.interval === 'number')            state.interval            = s.interval;
+    if (typeof s.micSensitivity === 'number')      state.micSensitivity      = s.micSensitivity;
+    if (typeof s.ticksEnabled === 'boolean')       state.ticksEnabled        = s.ticksEnabled;
+    if (typeof s.autoAdvanceOnCorrect === 'boolean') state.autoAdvanceOnCorrect = s.autoAdvanceOnCorrect;
     if (Array.isArray(s.activeNotes)  && s.activeNotes.length)  state.activeNotes  = new Set(s.activeNotes);
     if (Array.isArray(s.activeAcc)    && s.activeAcc.length)    state.activeAcc    = new Set(s.activeAcc);
     if (Array.isArray(s.activeChords) && s.activeChords.length) state.activeChords = new Set(s.activeChords);
@@ -178,7 +184,7 @@ function playTone(freq, vol = 0.2, dur = 0.5, type = 'triangle') {
 }
 
 function playBeep(freq = 880, vol = 0.15, dur = 0.08) { playTone(freq, vol, dur, 'sine'); }
-function playTick()        { playBeep(660, 0.06, 0.04); }
+function playTick()        { if (state.ticksEnabled) playBeep(660, 0.06, 0.04); }
 function playAdvanceBeep() { playBeep(880, 0.2,  0.12); }
 
 // ─── HINT (play note/chord tones) ──────────────────────────────────────────
@@ -208,6 +214,14 @@ function playHint() {
       intervals.forEach(interval => playTone(semitoneToFreq(midiBase + interval), 0.15, 1.4));
     }, intervals.length * 110 + 60);
   }
+}
+
+// ─── AUTO-ADVANCE ──────────────────────────────────────────────────────────
+
+let autoAdvanceTimer = null;
+
+function cancelAutoAdvance() {
+  if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
 }
 
 // ─── AUDIO FEEDBACK (Microphone) ───────────────────────────────────────────
@@ -350,6 +364,7 @@ async function startMic() {
 }
 
 function stopMic() {
+  cancelAutoAdvance();
   if (state.audioLoop) cancelAnimationFrame(state.audioLoop);
   if (state.micStream) state.micStream.getTracks().forEach(t => t.stop());
   if (state.audioCtx)  { state.audioCtx.close(); state.audioCtx = null; }
@@ -359,6 +374,7 @@ function stopMic() {
   audioLevel.classList.remove('active');
   audioBar.style.width = '0%';
   setFeedbackState('neutral');
+  updateStatsUI(); // hide streak row
 }
 
 // ─── DOM REFS ──────────────────────────────────────────────────────────────
@@ -411,6 +427,7 @@ window.addEventListener('resize', updateGlowPosition);
 // ─── FEEDBACK STATE ────────────────────────────────────────────────────────
 
 function setFeedbackState(s, detectedNote) {
+  const prev = state.feedbackState;
   state.feedbackState = s;
   noteDisplay.classList.remove('state-correct', 'state-wrong');
   if (s === 'correct') noteDisplay.classList.add('state-correct');
@@ -428,6 +445,14 @@ function setFeedbackState(s, detectedNote) {
   feedbackLabel.style.color =
     s === 'correct' ? 'var(--green)' :
     s === 'wrong'   ? 'var(--red)'   : 'var(--text-dim)';
+
+  // Auto-advance: trigger once when transitioning into 'correct'
+  if (s === 'correct' && prev !== 'correct' && state.autoAdvanceOnCorrect && state.micActive) {
+    cancelAutoAdvance();
+    autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; advance(); }, 1200);
+  } else if (s !== 'correct') {
+    cancelAutoAdvance();
+  }
 }
 
 // ─── SESSION STATS ─────────────────────────────────────────────────────────
@@ -471,17 +496,23 @@ function clearStats() {
 function renderIntervalDisplay(item) {
   if (!item || state.mode !== 'chord' || !item.chord) {
     intervalDisplay.textContent = '';
+    intervalDisplay.style.opacity = '0';
     return;
   }
   const ct = CHORD_TYPES.find(c => c.val === item.chord);
-  if (!ct) { intervalDisplay.textContent = ''; return; }
+  if (!ct) { intervalDisplay.textContent = ''; intervalDisplay.style.opacity = '0'; return; }
   intervalDisplay.textContent = ct.intervals.map(i => INTERVAL_LABEL[i] ?? i).join(' · ');
+  intervalDisplay.style.animation = 'none';
+  void intervalDisplay.offsetWidth;
+  intervalDisplay.style.animation = 'fadeUp 0.35s 0.2s ease forwards';
+  intervalDisplay.style.opacity = '0';
 }
 
 // ─── RENDER ────────────────────────────────────────────────────────────────
 
 function renderDisplay(item, animate = true) {
   if (!item) return;
+  cancelAutoAdvance();
   state.current = item;
 
   const accChar = item.acc === '#' ? '♯' : item.acc === 'b' ? '♭' : '';
@@ -531,7 +562,7 @@ function updateModeUI() {
   modeLabel.style.animation = 'none';
   void modeLabel.offsetWidth;
   modeLabel.style.animation = '';
-  chordSection.style.display = '';
+  chordSection.style.display = state.mode === 'chord' ? '' : 'none';
   document.querySelectorAll('.mode-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.mode === state.mode);
   });
@@ -626,6 +657,7 @@ loadSettings();
   intervalVal.textContent    = state.interval + 's';
   sensitivitySlider.value    = state.micSensitivity;
   sensitivityVal.textContent = state.micSensitivity;
+  syncToggles();
 
   const item = nextItem(false);
   if (item) { history.push(item); histIdx = 0; renderDisplay(item, false); }
@@ -727,6 +759,29 @@ document.addEventListener('click', e => {
   }
 });
 
+// ─── TOGGLES ───────────────────────────────────────────────────────────────
+
+function syncToggles() {
+  document.getElementById('ticksToggle').classList.toggle('on', state.ticksEnabled);
+  document.getElementById('autoAdvanceToggle').classList.toggle('on', state.autoAdvanceOnCorrect);
+}
+
+document.addEventListener('click', e => {
+  const tog = e.target.closest('.setting-toggle[data-key]');
+  if (!tog) return;
+  const key = tog.dataset.key;
+  if (key === 'ticks') {
+    state.ticksEnabled = !state.ticksEnabled;
+    tog.classList.toggle('on', state.ticksEnabled);
+    saveSettings();
+  } else if (key === 'autoAdvance') {
+    state.autoAdvanceOnCorrect = !state.autoAdvanceOnCorrect;
+    tog.classList.toggle('on', state.autoAdvanceOnCorrect);
+    if (!state.autoAdvanceOnCorrect) cancelAutoAdvance();
+    saveSettings();
+  }
+});
+
 // ─── SLIDERS ───────────────────────────────────────────────────────────────
 
 intervalSlider.addEventListener('input', () => {
@@ -811,8 +866,11 @@ document.getElementById('clearStatsBtn').addEventListener('click', clearStats);
 // ─── RESET ─────────────────────────────────────────────────────────────────
 
 document.getElementById('resetBtn').addEventListener('click', () => {
-  state.interval = 5;       intervalSlider.value = 5;  intervalVal.textContent = '5s';
-  state.micSensitivity = 5; sensitivitySlider.value = 5; sensitivityVal.textContent = '5';
+  state.interval = 5;                intervalSlider.value = 5;    intervalVal.textContent = '5s';
+  state.micSensitivity = 5;         sensitivitySlider.value = 5; sensitivityVal.textContent = '5';
+  state.ticksEnabled = true;
+  state.autoAdvanceOnCorrect = false;
+  syncToggles();
   state.activeNotes  = new Set(ROOT_NOTES);
   state.activeAcc    = new Set(['natural','sharp','flat']);
   state.activeChords = new Set(CHORD_TYPES.map(c => c.val));

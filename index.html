@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" id="themeColorMeta" content="#0d0d0f">
   <title>Chord Chance</title>
   <link rel="manifest" href="manifest.json">
@@ -133,6 +133,31 @@
       </div>
     </div>
 
+    <!-- Behaviour Toggles -->
+    <div class="s-section">
+      <div class="s-section-title">Behaviour</div>
+      <div class="toggle-list">
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Metronome ticks</div>
+            <div class="toggle-desc">Beep each second while timer runs</div>
+          </div>
+          <div class="setting-toggle on" id="ticksToggle" data-key="ticks">
+            <div class="toggle-thumb"></div>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Auto-advance on correct</div>
+            <div class="toggle-desc">Advance 1.2 s after mic detects correct</div>
+          </div>
+          <div class="setting-toggle" id="autoAdvanceToggle" data-key="autoAdvance">
+            <div class="toggle-thumb"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Root Notes -->
     <div class="s-section">
       <div class="s-section-title">Root Notes</div>
@@ -195,6 +220,19 @@
     <!-- Reset -->
     <div class="s-section">
       <button class="reset-btn" id="resetBtn">Reset to Defaults</button>
+    </div>
+
+    <!-- Keyboard Shortcuts -->
+    <div class="s-section">
+      <div class="s-section-title">Keyboard Shortcuts</div>
+      <div class="shortcut-list">
+        <div class="shortcut-row"><kbd>Space</kbd><span>Play / Pause</span></div>
+        <div class="shortcut-row"><kbd>←</kbd><kbd>→</kbd><span>Previous / Next</span></div>
+        <div class="shortcut-row"><kbd>H</kbd><span>Play hint</span></div>
+        <div class="shortcut-row"><kbd>M</kbd><span>Mic toggle</span></div>
+        <div class="shortcut-row"><kbd>S</kbd><span>Settings</span></div>
+        <div class="shortcut-row"><kbd>Esc</kbd><span>Close panel</span></div>
+      </div>
     </div>
 
   </div>

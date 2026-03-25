@@ -45,6 +45,7 @@ body {
   justify-content: center;
   overflow: hidden;
   position: relative;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Subtle grain overlay */
@@ -73,6 +74,11 @@ body::before {
 }
 .glow-orb.correct { background: radial-gradient(circle, rgba(76,201,124,0.08) 0%, transparent 70%); }
 .glow-orb.wrong   { background: radial-gradient(circle, rgba(201,76,76,0.08)  0%, transparent 70%); }
+
+/* Light theme: stronger glow since background is light */
+:root.light .glow-orb         { background: radial-gradient(circle, rgba(138,94,18,0.08)  0%, transparent 70%); }
+:root.light .glow-orb.correct { background: radial-gradient(circle, rgba(34,136,68,0.12)  0%, transparent 70%); }
+:root.light .glow-orb.wrong   { background: radial-gradient(circle, rgba(184,48,48,0.12)  0%, transparent 70%); }
 
 /* ── HEADER ── */
 header {
@@ -358,7 +364,8 @@ header {
 /* ── PROGRESS BAR ── */
 .progress-wrap {
   position: fixed;
-  bottom: 0; left: 0; right: 0;
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: 0; right: 0;
   height: 3px;
   background: var(--surface);
   z-index: 5;
@@ -374,7 +381,7 @@ header {
 /* ── TIMER DISPLAY ── */
 .timer-label {
   position: fixed;
-  bottom: 14px;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   font-size: 11px;
@@ -587,6 +594,78 @@ header {
   margin-top: 8px;
 }
 .reset-btn:hover { border-color: var(--red); color: var(--red); }
+
+/* ── SETTING TOGGLES ── */
+.toggle-list { display: flex; flex-direction: column; gap: 14px; }
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.toggle-info { flex: 1; }
+.toggle-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.toggle-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.03em;
+}
+
+.setting-toggle {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.2s, border-color 0.2s;
+  touch-action: manipulation;
+}
+.setting-toggle.on {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+.toggle-thumb {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--bg);
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.setting-toggle.on .toggle-thumb { transform: translateX(18px); }
+
+/* ── KEYBOARD SHORTCUTS ── */
+.shortcut-list { display: flex; flex-direction: column; gap: 8px; }
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.shortcut-row span { margin-left: 4px; }
+kbd {
+  font-family: 'Syne', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  color: var(--text);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
 
 /* Tap hint */
 .tap-hint {
