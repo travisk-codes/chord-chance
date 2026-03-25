@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0d0d0f"/>
+  <!-- Music note path, scaled from 24x24 to 512x512 -->
+  <path transform="translate(106.67,106.67) scale(21.333)" fill="#c9a84c"
+    d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+</svg>

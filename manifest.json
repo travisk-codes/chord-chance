@@ -2,10 +2,19 @@
   "name": "Chord Chance",
   "short_name": "Chord Chance",
   "description": "Music note and chord practice app",
-  "start_url": "/",
+  "start_url": "/chord-chance/",
+  "scope": "/chord-chance/",
   "display": "standalone",
   "background_color": "#0d0d0f",
   "theme_color": "#0d0d0f",
   "orientation": "portrait-primary",
-  "categories": ["music", "education"]
+  "categories": ["music", "education"],
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }
