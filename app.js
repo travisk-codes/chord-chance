@@ -638,6 +638,7 @@ function playMidiNote(midiNote, velocity = 100) {
 }
 
 
+function handleMidiMessage(e) {
   const [status, note, velocity] = e.data;
   const cmd = status & 0xf0;
   if (cmd === 0x90 || cmd === 0x80) {
