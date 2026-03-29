@@ -852,14 +852,14 @@ kbd {
   font-family: 'Syne', sans-serif;
 }
 .inv-display {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  min-height: 16px;
-  margin-top: 6px;
-  text-align: center;
+  font-size: clamp(15px, 2.4vw, 28px);
   font-family: 'Syne', sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  min-height: 1.4em;
+  margin-top: 2px;
+  text-align: center;
   position: relative;
   z-index: 1;
 }
