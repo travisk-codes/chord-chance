@@ -571,12 +571,40 @@ function stopDesktopAudio() {
 
 const heldMidiNotes = new Set(); // MIDI note numbers currently held
 
-const TWO_HAND_SPLIT = 60; // C4 (middle C)
+let wrongPenaltyTimer = null;
+let wrongCountedMidi  = false; // true if a wrong-chord penalty already fired for the current card
+
+function cancelWrongPenalty() {
+  if (wrongPenaltyTimer) { clearTimeout(wrongPenaltyTimer); wrongPenaltyTimer = null; }
+}
+
+// Record wrong immediately (called 400 ms after a wrong chord is held)
+function fireWrongPenalty() {
+  wrongCountedMidi = true;
+  const noteKey  = state.current.root + state.current.acc;
+  const chordKey = state.current.chord;
+  stats.wrong++;
+  stats.streak = 0;
+  noteWeights[noteKey]  = Math.min(8, (noteWeights[noteKey]  ?? 1) * 1.8);
+  if (chordKey) chordWeights[chordKey] = Math.min(8, (chordWeights[chordKey] ?? 1) * 1.8);
+  if (!noteStats[noteKey])  noteStats[noteKey]  = { c: 0, w: 0 };
+  noteStats[noteKey].w++;
+  if (chordKey) {
+    if (!chordStats[chordKey]) chordStats[chordKey] = { c: 0, w: 0 };
+    chordStats[chordKey].w++;
+  }
+  updateStatsUI();
+  saveStats();
+}
 
 function chordCoverage(pcs, expected) {
   let count = 0;
   for (const pc of expected) { if (pcs.has(pc)) count++; }
   return count / expected.size;
+}
+
+function midiNoteName(n) {
+  return SEMITONE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
 }
 
 function evaluateMidi() {
@@ -585,6 +613,7 @@ function evaluateMidi() {
   // are still being processed — let the auto-advance timer run to completion.
   if (state.feedbackState === 'correct') return;
   if (heldMidiNotes.size === 0) {
+    cancelWrongPenalty();
     setFeedbackState('neutral');
     if (midiNoteDisplay) midiNoteDisplay.textContent = '';
     return;
@@ -595,27 +624,43 @@ function evaluateMidi() {
   // Update MIDI note display
   if (midiNoteDisplay) {
     if (state.twoHandMode && state.mode === 'chord') {
-      const lowNotes  = [...heldMidiNotes].filter(n => n < TWO_HAND_SPLIT).sort((a,b)=>a-b);
-      const highNotes = [...heldMidiNotes].filter(n => n >= TWO_HAND_SPLIT).sort((a,b)=>a-b);
-      const fmt = notes => notes.length ? notes.map(n => SEMITONE_NAMES[n % 12]).join(' ') : '—';
-      midiNoteDisplay.textContent = fmt(lowNotes) + '  /  ' + fmt(highNotes);
+      // Group by octave, show notes with octave numbers
+      const byOct = {};
+      for (const n of [...heldMidiNotes].sort((a, b) => a - b)) {
+        const oct = Math.floor(n / 12) - 1;
+        if (!byOct[oct]) byOct[oct] = [];
+        byOct[oct].push(SEMITONE_NAMES[n % 12]);
+      }
+      midiNoteDisplay.textContent = Object.keys(byOct).sort((a, b) => a - b)
+        .map(oct => byOct[oct].join(' ') + oct).join(' / ');
     } else {
       const sortedPCs = [...heldPCs].sort((a, b) => a - b);
       midiNoteDisplay.textContent = sortedPCs.map(pc => SEMITONE_NAMES[pc]).join(' · ');
     }
   }
 
+  // Helper: set wrong state and start penalty timer (only once per card)
+  function wrongMidi(note, customMsg) {
+    setFeedbackState('wrong', note, customMsg);
+    if (!wrongPenaltyTimer && !wrongCountedMidi) {
+      wrongPenaltyTimer = setTimeout(() => {
+        wrongPenaltyTimer = null;
+        if (state.feedbackState === 'wrong') fireWrongPenalty();
+      }, 400);
+    }
+  }
+
   if (state.mode === 'note') {
     if (heldPCs.has(targetSemitone())) {
+      cancelWrongPenalty();
       setFeedbackState('correct');
     } else {
-      setFeedbackState('wrong', SEMITONE_NAMES[[...heldPCs][0]]);
+      wrongMidi(SEMITONE_NAMES[[...heldPCs][0]]);
     }
   } else {
     // Chord mode: check coverage of expected pitch classes
     const expected = expectedChromaSet();
 
-    // Allow up to 1 extra note (e.g. doubled root, passing tone) per hand in two-hand mode
     let extraCount = 0;
     for (const pc of heldPCs) { if (!expected.has(pc)) extraCount++; }
 
@@ -632,30 +677,26 @@ function evaluateMidi() {
         const rootPC  = NOTE_TO_SEMITONE[rootStr] ?? 0;
         const expectedBassPC = ct ? (rootPC + ct.intervals[state.currentInversion]) % 12 : rootPC;
         if (lowestPC !== expectedBassPC) {
-          setFeedbackState('wrong', SEMITONE_NAMES[lowestPC] + ' bass');
+          wrongMidi(SEMITONE_NAMES[lowestPC] + ' bass');
           return;
         }
       }
 
-      // Two-hand mode: require chord coverage in BOTH registers
+      // Two-hand mode: matching chord notes must span at least 2 octaves
       if (state.twoHandMode) {
-        const lowNotes  = [...heldMidiNotes].filter(n => n < TWO_HAND_SPLIT);
-        const highNotes = [...heldMidiNotes].filter(n => n >= TWO_HAND_SPLIT);
-        const lowPCs    = new Set(lowNotes.map(n => n % 12));
-        const highPCs   = new Set(highNotes.map(n => n % 12));
-        if (chordCoverage(lowPCs, expected) < 0.8) {
-          setFeedbackState('wrong', null, 'Add lower octave');
-          return;
-        }
-        if (chordCoverage(highPCs, expected) < 0.8) {
-          setFeedbackState('wrong', null, 'Add higher octave');
+        const matchingOctaves = new Set(
+          [...heldMidiNotes].filter(n => expected.has(n % 12)).map(n => Math.floor(n / 12))
+        );
+        if (matchingOctaves.size < 2) {
+          wrongMidi(null, 'Play in another octave');
           return;
         }
       }
 
+      cancelWrongPenalty();
       setFeedbackState('correct');
     } else if (heldPCs.size > 0) {
-      setFeedbackState('wrong', SEMITONE_NAMES[lowestPC]);
+      wrongMidi(SEMITONE_NAMES[lowestPC]);
     }
   }
 }
@@ -1135,7 +1176,8 @@ function recordAdvance() {
       if (!chordStats[chordKey]) chordStats[chordKey] = { c: 0, w: 0 };
       chordStats[chordKey].c++;
     }
-  } else if (state.feedbackState === 'wrong') {
+  } else if (state.feedbackState === 'wrong' && !wrongCountedMidi) {
+    // wrongCountedMidi means the MIDI penalty timer already recorded this wrong
     stats.wrong++;
     stats.streak = 0;
     // Increase weight (cap at 8)
@@ -1170,9 +1212,8 @@ function updateStatsUI() {
 }
 
 function windowAvg(ms) {
-  const cutoff = Date.now() - ms;
-  const recent = timingEntries.filter(e => e.ts >= cutoff);
-  return recent.length ? recent.reduce((s, e) => s + e.sec, 0) / recent.length : null;
+  const entries = ms !== null ? timingEntries.filter(e => e.ts >= Date.now() - ms) : timingEntries;
+  return entries.length ? entries.reduce((s, e) => s + e.sec, 0) / entries.length : null;
 }
 
 function fmtSec(v) { return v !== null ? v.toFixed(1) + 's' : '—'; }
@@ -1182,12 +1223,11 @@ function updateAvgTimeUI() {
   if (!row) return;
   row.style.display = state.showAvgTime ? '' : 'none';
   if (!state.showAvgTime) return;
-  const el1  = document.getElementById('avgTime1m');
-  const el5  = document.getElementById('avgTime5m');
-  const el10 = document.getElementById('avgTime10m');
-  if (el1)  el1.textContent  = fmtSec(windowAvg(60_000));
-  if (el5)  el5.textContent  = fmtSec(windowAvg(300_000));
-  if (el10) el10.textContent = fmtSec(windowAvg(600_000));
+  const ids = { avgTime1m: 60_000, avgTime5m: 300_000, avgTime10m: 600_000, avgTime30m: 1_800_000, avgTimeAll: null };
+  for (const [id, ms] of Object.entries(ids)) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = fmtSec(windowAvg(ms));
+  }
 }
 
 function renderTimingChart() {
@@ -1243,6 +1283,13 @@ function renderTimingChart() {
     `<circle cx="${px(i)}" cy="${py(e.sec)}" r="1.8" fill="${col}" opacity="0.3"/>`
   ).join('');
 
+  const windows = [
+    ['1m', windowAvg(60_000)], ['5m', windowAvg(300_000)], ['10m', windowAvg(600_000)],
+    ['30m', windowAvg(1_800_000)], ['All', windowAvg(null)],
+  ].map(([lbl, v]) =>
+    `<span class="cw-item"><span class="cw-val">${fmtSec(v)}</span><span class="cw-lbl">${lbl}</span></span>`
+  ).join('');
+
   wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
   <defs>
     <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
@@ -1254,6 +1301,7 @@ function renderTimingChart() {
   <path d="${fillPath}" fill="url(#chartGrad)"/>
   <path d="${linePath}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
+<div class="chart-windows">${windows}</div>
 <div class="chart-count">${n} responses</div>`;
 }
 
@@ -1297,6 +1345,8 @@ function renderIntervalDisplay(item) {
 function renderDisplay(item, animate = true) {
   if (!item) return;
   cancelAutoAdvance();
+  cancelWrongPenalty();
+  wrongCountedMidi = false;
   if (earHintTimer) { clearTimeout(earHintTimer); earHintTimer = null; }
   state.current = item;
   state.cardShownAt = performance.now();

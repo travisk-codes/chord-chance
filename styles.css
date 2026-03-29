@@ -655,6 +655,34 @@ header {
   pointer-events: none;
   opacity: 0.9;
 }
+.chart-windows {
+  display: flex;
+  justify-content: space-between;
+  gap: 2px;
+  margin-top: 5px;
+}
+.cw-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  flex: 1;
+}
+.cw-val {
+  font-family: 'Syne', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+  line-height: 1;
+}
+.cw-lbl {
+  font-family: 'Syne', sans-serif;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
 .chart-count {
   font-family: 'Syne', sans-serif;
   font-size: 9px;
