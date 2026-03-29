@@ -82,7 +82,8 @@ function anyInputActive() {
 }
 
 const stats = { correct: 0, wrong: 0, streak: 0, bestStreak: 0 };
-const timingStats = { sum: 0, count: 0 };
+const timingEntries = []; // { ts: Date.now(), sec: number }
+const MAX_TIMING = 300;
 
 const noteWeights = {};
 const chordWeights = {};
@@ -94,7 +95,7 @@ function saveStats() {
     localStorage.setItem('cc2_stats', JSON.stringify({
       correct: stats.correct, wrong: stats.wrong, bestStreak: stats.bestStreak,
       noteStats, chordStats, noteWeights, chordWeights,
-      timingSum: timingStats.sum, timingCount: timingStats.count,
+      timingEntries: timingEntries.slice(-MAX_TIMING),
     }));
   } catch(e) {}
 }
@@ -110,8 +111,7 @@ function loadStats() {
     if (s.chordStats)   Object.assign(chordStats,   s.chordStats);
     if (s.noteWeights)  Object.assign(noteWeights,  s.noteWeights);
     if (s.chordWeights) Object.assign(chordWeights, s.chordWeights);
-    if (typeof s.timingSum   === 'number') timingStats.sum   = s.timingSum;
-    if (typeof s.timingCount === 'number') timingStats.count = s.timingCount;
+    if (Array.isArray(s.timingEntries)) timingEntries.push(...s.timingEntries.slice(-MAX_TIMING));
   } catch(e) {}
 }
 
@@ -1057,10 +1057,11 @@ function setFeedbackState(s, detectedNote) {
   // Record response time on correct transition
   if (s === 'correct' && prev !== 'correct' && anyInputActive() && state.cardShownAt !== null) {
     const elapsed = (performance.now() - state.cardShownAt) / 1000;
-    timingStats.sum   += elapsed;
-    timingStats.count += 1;
+    timingEntries.push({ ts: Date.now(), sec: elapsed });
+    if (timingEntries.length > MAX_TIMING) timingEntries.shift();
     state.cardShownAt = null;
     updateAvgTimeUI();
+    renderTimingChart();
     saveStats();
   }
 
@@ -1132,20 +1133,98 @@ function updateStatsUI() {
   }
 }
 
+function windowAvg(ms) {
+  const cutoff = Date.now() - ms;
+  const recent = timingEntries.filter(e => e.ts >= cutoff);
+  return recent.length ? recent.reduce((s, e) => s + e.sec, 0) / recent.length : null;
+}
+
+function fmtSec(v) { return v !== null ? v.toFixed(1) + 's' : '—'; }
+
 function updateAvgTimeUI() {
   const row = document.getElementById('avgTimeRow');
   if (!row) return;
   row.style.display = state.showAvgTime ? '' : 'none';
   if (!state.showAvgTime) return;
-  const el = document.getElementById('statAvgTime');
-  if (el) el.textContent = timingStats.count > 0
-    ? (timingStats.sum / timingStats.count).toFixed(1) + 's'
-    : '—';
+  const el1  = document.getElementById('avgTime1m');
+  const el5  = document.getElementById('avgTime5m');
+  const el10 = document.getElementById('avgTime10m');
+  if (el1)  el1.textContent  = fmtSec(windowAvg(60_000));
+  if (el5)  el5.textContent  = fmtSec(windowAvg(300_000));
+  if (el10) el10.textContent = fmtSec(windowAvg(600_000));
+}
+
+function renderTimingChart() {
+  const wrap = document.getElementById('timingChartWrap');
+  if (!wrap) return;
+  if (!state.showAvgTime || timingEntries.length < 2) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = '';
+
+  const W = 180, H = 70;
+  const PL = 6, PR = 6, PT = 8, PB = 8;
+  const cW = W - PL - PR, cH = H - PT - PB;
+
+  // Rolling 5-point average for the line
+  const ROLL = 5;
+  const smooth = timingEntries.map((_, i) => {
+    const slice = timingEntries.slice(Math.max(0, i - ROLL + 1), i + 1);
+    return slice.reduce((s, e) => s + e.sec, 0) / slice.length;
+  });
+
+  const n   = smooth.length;
+  const minY = Math.min(...smooth, ...timingEntries.map(e => e.sec));
+  const maxY = Math.max(...smooth, ...timingEntries.map(e => e.sec));
+  const rY   = Math.max(maxY - minY, 0.5);
+
+  const px = i => (PL + (i / Math.max(n - 1, 1)) * cW).toFixed(2);
+  const py = v  => (PT + (1 - (v - minY) / rY) * cH).toFixed(2);
+
+  // Trend: last third vs first third
+  const t = Math.max(1, Math.floor(n / 3));
+  const early = smooth.slice(0, t).reduce((s, v) => s + v, 0) / t;
+  const late  = smooth.slice(-t).reduce((s, v) => s + v, 0) / t;
+  const diff  = (late - early) / early;
+  const col   = diff < -0.07 ? 'var(--green)' : diff > 0.07 ? 'var(--red)' : 'var(--gold)';
+
+  // Smooth line using cubic bezier between each pair of points
+  let linePath = `M ${px(0)} ${py(smooth[0])}`;
+  for (let i = 1; i < n; i++) {
+    const x0 = parseFloat(px(i - 1)), y0 = parseFloat(py(smooth[i - 1]));
+    const x1 = parseFloat(px(i)),     y1 = parseFloat(py(smooth[i]));
+    const cx  = ((x0 + x1) / 2).toFixed(2);
+    linePath += ` C ${cx} ${y0.toFixed(2)} ${cx} ${y1.toFixed(2)} ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+  }
+
+  // Fill under the line
+  const fillPath = linePath
+    + ` L ${px(n - 1)} ${(PT + cH).toFixed(2)} L ${PL} ${(PT + cH).toFixed(2)} Z`;
+
+  // Raw dots
+  const dots = timingEntries.map((e, i) =>
+    `<circle cx="${px(i)}" cy="${py(e.sec)}" r="1.8" fill="${col}" opacity="0.3"/>`
+  ).join('');
+
+  wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+  <defs>
+    <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${col}" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="${col}" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  ${dots}
+  <path d="${fillPath}" fill="url(#chartGrad)"/>
+  <path d="${linePath}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+<div class="chart-count">${n} responses</div>`;
 }
 
 function clearTiming() {
-  timingStats.sum = 0; timingStats.count = 0;
+  timingEntries.length = 0;
   updateAvgTimeUI();
+  renderTimingChart();
   saveStats();
 }
 
@@ -1386,6 +1465,7 @@ loadStats();
   updateModeUI();
   updateTimerUI();
   updateAvgTimeUI();
+  renderTimingChart();
   updateGlowPosition();
 })();
 
@@ -1562,6 +1642,7 @@ document.addEventListener('click', e => {
     state.showAvgTime = !state.showAvgTime;
     tog.classList.toggle('on', state.showAvgTime);
     updateAvgTimeUI();
+    renderTimingChart();
     saveSettings();
   } else if (key === 'showDegrees') {
     state.showScaleDegrees = !state.showScaleDegrees;

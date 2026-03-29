@@ -330,9 +330,19 @@
         </div>
       </div>
       <div id="avgTimeRow" style="display:none">
-        <div class="avg-time-row">
-          <span class="avg-time-label">Avg response time</span>
-          <span class="stat-val" id="statAvgTime">—</span>
+        <div class="avg-time-windows">
+          <div class="avg-time-window">
+            <span class="avg-time-val" id="avgTime1m">—</span>
+            <span class="avg-time-lbl">1 min</span>
+          </div>
+          <div class="avg-time-window">
+            <span class="avg-time-val" id="avgTime5m">—</span>
+            <span class="avg-time-lbl">5 min</span>
+          </div>
+          <div class="avg-time-window">
+            <span class="avg-time-val" id="avgTime10m">—</span>
+            <span class="avg-time-lbl">10 min</span>
+          </div>
           <button class="clear-timing-btn" id="clearTimingBtn" title="Clear timing data">×</button>
         </div>
       </div>
@@ -373,6 +383,8 @@
   </div>
   <div class="summary-body" id="summaryBody"></div>
 </div>
+
+<div class="timing-chart-wrap" id="timingChartWrap" style="display:none"></div>
 
 <script src="app.js"></script>
 <script>
