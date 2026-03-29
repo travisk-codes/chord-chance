@@ -587,11 +587,23 @@ function evaluateMidi() {
     let extraCount = 0;
     for (const pc of heldPCs) { if (!expected.has(pc)) extraCount++; }
 
+    const lowestMidi = [...heldMidiNotes].sort((a, b) => a - b)[0];
+    const lowestPC   = lowestMidi % 12;
+
     if (coverage >= 0.8 && extraCount <= 1) {
+      // All the right notes — now check bass for inversion if enabled
+      if (state.showInversions) {
+        const ct = CHORD_TYPES.find(c => c.val === state.current.chord);
+        const rootStr = state.current.root + (state.current.acc === '#' ? '#' : state.current.acc === 'b' ? 'b' : '');
+        const rootPC  = NOTE_TO_SEMITONE[rootStr] ?? 0;
+        const expectedBassPC = ct ? (rootPC + ct.intervals[state.currentInversion]) % 12 : rootPC;
+        if (lowestPC !== expectedBassPC) {
+          setFeedbackState('wrong', SEMITONE_NAMES[lowestPC] + ' bass');
+          return;
+        }
+      }
       setFeedbackState('correct');
     } else if (heldPCs.size > 0) {
-      // Show the lowest held note as the "detected" root
-      const lowestPC = [...heldMidiNotes].sort((a, b) => a - b)[0] % 12;
       setFeedbackState('wrong', SEMITONE_NAMES[lowestPC]);
     }
   }
@@ -683,6 +695,7 @@ const statWrong         = document.getElementById('statWrong');
 const statBest          = document.getElementById('statBest');
 const statAccuracy      = document.getElementById('statAccuracy');
 const pianoDisplay      = document.getElementById('pianoDisplay');
+const invDisplay        = document.getElementById('invDisplay');
 const midiNoteDisplay   = document.getElementById('midiNoteDisplay');
 const midiLowSlider     = document.getElementById('midiLowSlider');
 const midiLowVal        = document.getElementById('midiLowVal');
@@ -768,14 +781,21 @@ function renderPianoVoicing(item) {
 
   if (state.showInversions) {
     const midiNotes = getVoicingMidi(rootPC, ct.intervals, state.currentInversion);
-    const label = INV_LABELS[state.currentInversion] ?? 'Root pos.';
-    pianoDisplay.innerHTML = buildPianoSVG2Oct(midiNotes) +
-      `<div class="inv-label">${label}</div>`;
+    pianoDisplay.innerHTML = buildPianoSVG2Oct(midiNotes);
   } else {
     const pcs = new Set(ct.intervals.map(i => (rootPC + i) % 12));
     pianoDisplay.innerHTML = buildPianoSVG(pcs);
   }
   pianoDisplay.style.opacity = '1';
+}
+
+function renderInversionLabel(item) {
+  if (!invDisplay) return;
+  if (!item || state.mode !== 'chord' || !item.chord || !state.showInversions) {
+    invDisplay.textContent = '';
+    return;
+  }
+  invDisplay.textContent = INV_LABELS[state.currentInversion] ?? 'Root pos.';
 }
 
 // ─── EAR TRAINING ──────────────────────────────────────────────────────────
@@ -883,6 +903,7 @@ function handleEarChoice(isCorrect, clickedBtn, allBtns, item) {
     chordQuality.style.opacity = '1';
     renderIntervalDisplay(item);
     renderPianoVoicing(item);
+    renderInversionLabel(item);
   }
 
   cancelAutoAdvance();
@@ -1112,7 +1133,7 @@ function renderDisplay(item, animate = true) {
         chordQuality.textContent   = '';
         chordQuality.style.opacity = '0';
       }
-      if (!state.earMode) { renderIntervalDisplay(item); renderPianoVoicing(item); }
+      if (!state.earMode) { renderIntervalDisplay(item); renderPianoVoicing(item); renderInversionLabel(item); }
     }, 140);
   } else {
     noteDisplay.innerHTML = displayInner;
@@ -1124,7 +1145,7 @@ function renderDisplay(item, animate = true) {
       chordQuality.textContent   = '';
       chordQuality.style.opacity = '0';
     }
-    if (!state.earMode) { renderIntervalDisplay(item); renderPianoVoicing(item); }
+    if (!state.earMode) { renderIntervalDisplay(item); renderPianoVoicing(item); renderInversionLabel(item); }
   }
 
   setFeedbackState('neutral');
@@ -1155,6 +1176,7 @@ function updateModeUI() {
   if (!state.earMode) {
     if (earChoices)   { earChoices.innerHTML = ''; earChoices.style.display = 'none'; }
     if (pianoDisplay && state.mode !== 'chord') pianoDisplay.style.opacity = '0';
+    if (invDisplay && state.mode !== 'chord') invDisplay.textContent = '';
   }
 }
 
@@ -1445,6 +1467,7 @@ document.addEventListener('click', e => {
         state.currentInversion = 0;
       }
       renderPianoVoicing(cur);
+      renderInversionLabel(cur);
     }
     saveSettings();
   } else if (key === 'showDiagram') {

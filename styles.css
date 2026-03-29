@@ -851,6 +851,18 @@ kbd {
   text-align: center;
   font-family: 'Syne', sans-serif;
 }
+.inv-display {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  min-height: 16px;
+  margin-top: 6px;
+  text-align: center;
+  font-family: 'Syne', sans-serif;
+  position: relative;
+  z-index: 1;
+}
 
 /* ── SUMMARY COPY BUTTON ── */
 .summary-copy-btn {
