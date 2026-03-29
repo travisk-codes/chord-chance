@@ -559,6 +559,9 @@ const heldMidiNotes = new Set(); // MIDI note numbers currently held
 
 function evaluateMidi() {
   if (state.earMode) return;
+  // Once correct is detected, don't overwrite with neutral/wrong while notes
+  // are still being processed — let the auto-advance timer run to completion.
+  if (state.feedbackState === 'correct') return;
   if (heldMidiNotes.size === 0) {
     setFeedbackState('neutral');
     if (midiNoteDisplay) midiNoteDisplay.textContent = '';
@@ -1046,7 +1049,8 @@ function setFeedbackState(s, detectedNote) {
   // Auto-advance: trigger once when transitioning into 'correct'
   if (s === 'correct' && prev !== 'correct' && state.autoAdvanceOnCorrect && anyInputActive()) {
     cancelAutoAdvance();
-    autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; advance(); }, 1200);
+    const delay = state.midiActive ? 350 : 1200;
+    autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; advance(); }, delay);
   } else if (s !== 'correct') {
     cancelAutoAdvance();
   }
