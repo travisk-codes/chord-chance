@@ -53,10 +53,12 @@
   <div class="display-wrap">
     <div class="note-display flash-in" id="noteDisplay">C</div>
   </div>
-  <div class="chord-quality" id="chordQuality"></div>
-  <div class="interval-display" id="intervalDisplay"></div>
+  <div class="chord-block">
+    <div class="chord-quality" id="chordQuality"></div>
+    <div class="inv-display" id="invDisplay"></div>
+    <div class="interval-display" id="intervalDisplay"></div>
+  </div>
   <div class="piano-display" id="pianoDisplay"></div>
-  <div class="inv-display" id="invDisplay"></div>
   <div class="feedback-label" id="feedbackLabel"></div>
   <div class="midi-note-display" id="midiNoteDisplay"></div>
   <div class="ear-choices" id="earChoices"></div>
@@ -228,6 +230,15 @@
             <div class="toggle-desc">Display chord voicings in random inversions (chord mode)</div>
           </div>
           <div class="setting-toggle" id="inversionsToggle" data-key="inversions">
+            <div class="toggle-thumb"></div>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Show scale degrees</div>
+            <div class="toggle-desc">Display interval numbers below the chord (1 · 3 · 5…)</div>
+          </div>
+          <div class="setting-toggle on" id="showDegreesToggle" data-key="showDegrees">
             <div class="toggle-thumb"></div>
           </div>
         </div>

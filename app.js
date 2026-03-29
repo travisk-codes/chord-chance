@@ -71,6 +71,7 @@ const state = {
   showInversions: false,
   currentInversion: 0,
   showDiagram: true,
+  showScaleDegrees: true,
   untimedMode: false,
 };
 
@@ -130,6 +131,7 @@ function saveSettings() {
       bpm:                  state.bpm,
       showInversions:       state.showInversions,
       showDiagram:          state.showDiagram,
+      showScaleDegrees:     state.showScaleDegrees,
       untimedMode:          state.untimedMode,
     }));
   } catch(e) {}
@@ -155,7 +157,8 @@ function loadSettings() {
     if (typeof s.bpmMode === 'boolean') state.bpmMode = s.bpmMode;
     if (typeof s.bpm === 'number') state.bpm = s.bpm;
     if (typeof s.showInversions === 'boolean') state.showInversions = s.showInversions;
-    if (typeof s.showDiagram === 'boolean')   state.showDiagram   = s.showDiagram;
+    if (typeof s.showDiagram === 'boolean')       state.showDiagram       = s.showDiagram;
+    if (typeof s.showScaleDegrees === 'boolean')  state.showScaleDegrees  = s.showScaleDegrees;
     if (typeof s.untimedMode === 'boolean')   state.untimedMode   = s.untimedMode;
   } catch(e) {}
 }
@@ -1124,7 +1127,7 @@ function clearStats() {
 // ─── INTERVAL DISPLAY ──────────────────────────────────────────────────────
 
 function renderIntervalDisplay(item) {
-  if (!item || state.mode !== 'chord' || !item.chord) {
+  if (!item || state.mode !== 'chord' || !item.chord || !state.showScaleDegrees) {
     intervalDisplay.textContent = '';
     intervalDisplay.style.opacity = '0';
     return;
@@ -1455,6 +1458,8 @@ function syncToggles() {
   if (wt) wt.classList.toggle('on', state.weakSpotsOnly);
   const it = document.getElementById('inversionsToggle');
   if (it) it.classList.toggle('on', state.showInversions);
+  const sd = document.getElementById('showDegreesToggle');
+  if (sd) sd.classList.toggle('on', state.showScaleDegrees);
   const dt = document.getElementById('showDiagramToggle');
   if (dt) dt.classList.toggle('on', state.showDiagram);
   const ut = document.getElementById('untimedToggle');
@@ -1512,6 +1517,12 @@ document.addEventListener('click', e => {
       renderPianoVoicing(cur);
       renderInversionLabel(cur);
     }
+    saveSettings();
+  } else if (key === 'showDegrees') {
+    state.showScaleDegrees = !state.showScaleDegrees;
+    tog.classList.toggle('on', state.showScaleDegrees);
+    const cur = history[histIdx];
+    if (cur) renderIntervalDisplay(cur);
     saveSettings();
   } else if (key === 'showDiagram') {
     state.showDiagram = !state.showDiagram;
@@ -1672,6 +1683,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   state.showInversions = false;
   state.currentInversion = 0;
   state.showDiagram = true;
+  state.showScaleDegrees = true;
   state.untimedMode = false;
   if (midiLowSlider) { midiLowSlider.value = 0; midiLowVal.textContent = 'All'; }
   updateIntervalUI();
