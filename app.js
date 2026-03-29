@@ -63,6 +63,7 @@ const state = {
   feedbackState: 'neutral',
   correctChime: true,
   midiMinNote: 0,
+  midiSoundEnabled: true,
   earMode: false,
   weakSpotsOnly: false,
   bpmMode: false,
@@ -122,6 +123,7 @@ function saveSettings() {
       mode:                 state.mode,
       correctChime:         state.correctChime,
       midiMinNote:          state.midiMinNote,
+      midiSoundEnabled:     state.midiSoundEnabled,
       earMode:              state.earMode,
       weakSpotsOnly:        state.weakSpotsOnly,
       bpmMode:              state.bpmMode,
@@ -146,7 +148,8 @@ function loadSettings() {
     if (Array.isArray(s.activeChords) && s.activeChords.length) state.activeChords = new Set(s.activeChords);
     if (s.mode === 'note' || s.mode === 'chord') state.mode = s.mode;
     if (typeof s.correctChime === 'boolean') state.correctChime = s.correctChime;
-    if (typeof s.midiMinNote === 'number') state.midiMinNote = s.midiMinNote;
+    if (typeof s.midiMinNote === 'number')       state.midiMinNote       = s.midiMinNote;
+    if (typeof s.midiSoundEnabled === 'boolean') state.midiSoundEnabled  = s.midiSoundEnabled;
     if (typeof s.earMode === 'boolean') state.earMode = s.earMode;
     if (typeof s.weakSpotsOnly === 'boolean') state.weakSpotsOnly = s.weakSpotsOnly;
     if (typeof s.bpmMode === 'boolean') state.bpmMode = s.bpmMode;
@@ -609,14 +612,43 @@ function evaluateMidi() {
   }
 }
 
-function handleMidiMessage(e) {
+function playMidiNote(midiNote, velocity = 100) {
+  if (!state.midiSoundEnabled) return;
+  try {
+    const ctx = ensureBeepCtx();
+    const now = ctx.currentTime;
+    const freq = semitoneToFreq(midiNote);
+    const vol  = (velocity / 127) * 0.22;
+    // Fundamental + 2nd + 3rd harmonic for a piano-ish timbre
+    [[freq, 'triangle', 1.0], [freq * 2, 'sine', 0.12], [freq * 3, 'sine', 0.06]].forEach(([f, type, mul]) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = type;
+      osc.frequency.value = f;
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(vol * mul, now + 0.004); // sharp attack
+      gain.gain.exponentialRampToValueAtTime(vol * mul * 0.35, now + 0.07); // quick initial decay
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);  // long release
+      osc.start(now);
+      osc.stop(now + 1.9);
+    });
+  } catch(e) {}
+}
+
+
   const [status, note, velocity] = e.data;
   const cmd = status & 0xf0;
   if (cmd === 0x90 || cmd === 0x80) {
     if (state.midiMinNote > 0 && note < state.midiMinNote) return;
   }
-  if      (cmd === 0x90 && velocity > 0) heldMidiNotes.add(note);
-  else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) heldMidiNotes.delete(note);
+  if (cmd === 0x90 && velocity > 0) {
+    heldMidiNotes.add(note);
+    playMidiNote(note, velocity);
+  } else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) {
+    heldMidiNotes.delete(note);
+  }
   // Ignore other message types (CC, pitch bend, etc.)
   if (cmd === 0x90 || cmd === 0x80) evaluateMidi();
 }
@@ -1410,6 +1442,8 @@ function syncToggles() {
   document.getElementById('autoAdvanceToggle').classList.toggle('on', state.autoAdvanceOnCorrect);
   const ct = document.getElementById('chimeToggle');
   if (ct) ct.classList.toggle('on', state.correctChime);
+  const ms = document.getElementById('midiSoundToggle');
+  if (ms) ms.classList.toggle('on', state.midiSoundEnabled);
   const bt = document.getElementById('bpmModeToggle');
   if (bt) bt.classList.toggle('on', state.bpmMode);
   const wt = document.getElementById('weakSpotsToggle');
@@ -1443,6 +1477,10 @@ document.addEventListener('click', e => {
   } else if (key === 'chime') {
     state.correctChime = !state.correctChime;
     tog.classList.toggle('on', state.correctChime);
+    saveSettings();
+  } else if (key === 'midiSound') {
+    state.midiSoundEnabled = !state.midiSoundEnabled;
+    tog.classList.toggle('on', state.midiSoundEnabled);
     saveSettings();
   } else if (key === 'bpmMode') {
     state.bpmMode = !state.bpmMode;
@@ -1621,6 +1659,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   state.autoAdvanceOnCorrect = false;
   state.correctChime = true;
   state.midiMinNote = 0;
+  state.midiSoundEnabled = true;
   state.earMode = false;
   state.weakSpotsOnly = false;
   state.bpmMode = false;
