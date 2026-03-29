@@ -75,6 +75,7 @@ const state = {
   untimedMode: false,
   showAvgTime: false,
   cardShownAt: null,
+  twoHandMode: false,
 };
 
 function anyInputActive() {
@@ -140,6 +141,7 @@ function saveSettings() {
       showScaleDegrees:     state.showScaleDegrees,
       showAvgTime:          state.showAvgTime,
       untimedMode:          state.untimedMode,
+      twoHandMode:          state.twoHandMode,
     }));
   } catch(e) {}
 }
@@ -168,6 +170,7 @@ function loadSettings() {
     if (typeof s.showScaleDegrees === 'boolean')  state.showScaleDegrees  = s.showScaleDegrees;
     if (typeof s.showAvgTime === 'boolean')       state.showAvgTime       = s.showAvgTime;
     if (typeof s.untimedMode === 'boolean')   state.untimedMode   = s.untimedMode;
+    if (typeof s.twoHandMode === 'boolean')   state.twoHandMode   = s.twoHandMode;
   } catch(e) {}
 }
 
@@ -568,6 +571,14 @@ function stopDesktopAudio() {
 
 const heldMidiNotes = new Set(); // MIDI note numbers currently held
 
+const TWO_HAND_SPLIT = 60; // C4 (middle C)
+
+function chordCoverage(pcs, expected) {
+  let count = 0;
+  for (const pc of expected) { if (pcs.has(pc)) count++; }
+  return count / expected.size;
+}
+
 function evaluateMidi() {
   if (state.earMode) return;
   // Once correct is detected, don't overwrite with neutral/wrong while notes
@@ -583,8 +594,15 @@ function evaluateMidi() {
 
   // Update MIDI note display
   if (midiNoteDisplay) {
-    const sortedPCs = [...heldPCs].sort((a, b) => a - b);
-    midiNoteDisplay.textContent = sortedPCs.map(pc => SEMITONE_NAMES[pc]).join(' · ');
+    if (state.twoHandMode && state.mode === 'chord') {
+      const lowNotes  = [...heldMidiNotes].filter(n => n < TWO_HAND_SPLIT).sort((a,b)=>a-b);
+      const highNotes = [...heldMidiNotes].filter(n => n >= TWO_HAND_SPLIT).sort((a,b)=>a-b);
+      const fmt = notes => notes.length ? notes.map(n => SEMITONE_NAMES[n % 12]).join(' ') : '—';
+      midiNoteDisplay.textContent = fmt(lowNotes) + '  /  ' + fmt(highNotes);
+    } else {
+      const sortedPCs = [...heldPCs].sort((a, b) => a - b);
+      midiNoteDisplay.textContent = sortedPCs.map(pc => SEMITONE_NAMES[pc]).join(' · ');
+    }
   }
 
   if (state.mode === 'note') {
@@ -596,19 +614,18 @@ function evaluateMidi() {
   } else {
     // Chord mode: check coverage of expected pitch classes
     const expected = expectedChromaSet();
-    let matchCount = 0;
-    for (const pc of expected) { if (heldPCs.has(pc)) matchCount++; }
-    const coverage = matchCount / expected.size;
 
-    // Allow up to 1 extra note (e.g. doubled root, passing tone)
+    // Allow up to 1 extra note (e.g. doubled root, passing tone) per hand in two-hand mode
     let extraCount = 0;
     for (const pc of heldPCs) { if (!expected.has(pc)) extraCount++; }
 
     const lowestMidi = [...heldMidiNotes].sort((a, b) => a - b)[0];
     const lowestPC   = lowestMidi % 12;
 
+    const coverage = chordCoverage(heldPCs, expected);
+
     if (coverage >= 0.8 && extraCount <= 1) {
-      // All the right notes — now check bass for inversion if enabled
+      // All the right notes — check inversion bass if enabled
       if (state.showInversions) {
         const ct = CHORD_TYPES.find(c => c.val === state.current.chord);
         const rootStr = state.current.root + (state.current.acc === '#' ? '#' : state.current.acc === 'b' ? 'b' : '');
@@ -619,6 +636,23 @@ function evaluateMidi() {
           return;
         }
       }
+
+      // Two-hand mode: require chord coverage in BOTH registers
+      if (state.twoHandMode) {
+        const lowNotes  = [...heldMidiNotes].filter(n => n < TWO_HAND_SPLIT);
+        const highNotes = [...heldMidiNotes].filter(n => n >= TWO_HAND_SPLIT);
+        const lowPCs    = new Set(lowNotes.map(n => n % 12));
+        const highPCs   = new Set(highNotes.map(n => n % 12));
+        if (chordCoverage(lowPCs, expected) < 0.8) {
+          setFeedbackState('wrong', null, 'Add lower octave');
+          return;
+        }
+        if (chordCoverage(highPCs, expected) < 0.8) {
+          setFeedbackState('wrong', null, 'Add higher octave');
+          return;
+        }
+      }
+
       setFeedbackState('correct');
     } else if (heldPCs.size > 0) {
       setFeedbackState('wrong', SEMITONE_NAMES[lowestPC]);
@@ -1034,7 +1068,7 @@ function closeSummary() {
 
 // ─── FEEDBACK STATE ────────────────────────────────────────────────────────
 
-function setFeedbackState(s, detectedNote) {
+function setFeedbackState(s, detectedNote, customMsg) {
   const prev = state.feedbackState;
   state.feedbackState = s;
   noteDisplay.classList.remove('state-correct', 'state-wrong');
@@ -1045,6 +1079,8 @@ function setFeedbackState(s, detectedNote) {
 
   if (s === 'correct') {
     feedbackLabel.textContent = 'Correct';
+  } else if (s === 'wrong' && customMsg) {
+    feedbackLabel.textContent = customMsg;
   } else if (s === 'wrong' && detectedNote) {
     feedbackLabel.textContent = `Hearing: ${detectedNote}`;
   } else {
@@ -1584,6 +1620,8 @@ function syncToggles() {
   if (dt) dt.classList.toggle('on', state.showDiagram);
   const ut = document.getElementById('untimedToggle');
   if (ut) ut.classList.toggle('on', state.untimedMode);
+  const th = document.getElementById('twoHandToggle');
+  if (th) th.classList.toggle('on', state.twoHandMode);
   if (midiLowSlider) {
     const octave = state.midiMinNote > 0 ? Math.round((state.midiMinNote - 24) / 12) : 0;
     midiLowSlider.value = octave;
@@ -1662,6 +1700,10 @@ document.addEventListener('click', e => {
     if (state.untimedMode && state.playing) stopTimer();
     else if (!state.untimedMode && state.playing) startTimer();
     updateTimerUI();
+    saveSettings();
+  } else if (key === 'twoHand') {
+    state.twoHandMode = !state.twoHandMode;
+    tog.classList.toggle('on', state.twoHandMode);
     saveSettings();
   }
 });
@@ -1814,6 +1856,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   state.showScaleDegrees = true;
   state.showAvgTime = false;
   state.untimedMode = false;
+  state.twoHandMode = false;
   if (midiLowSlider) { midiLowSlider.value = 0; midiLowVal.textContent = 'All'; }
   updateIntervalUI();
   syncToggles();
