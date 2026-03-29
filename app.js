@@ -73,6 +73,8 @@ const state = {
   showDiagram: true,
   showScaleDegrees: true,
   untimedMode: false,
+  showAvgTime: false,
+  cardShownAt: null,
 };
 
 function anyInputActive() {
@@ -80,6 +82,7 @@ function anyInputActive() {
 }
 
 const stats = { correct: 0, wrong: 0, streak: 0, bestStreak: 0 };
+const timingStats = { sum: 0, count: 0 };
 
 const noteWeights = {};
 const chordWeights = {};
@@ -91,6 +94,7 @@ function saveStats() {
     localStorage.setItem('cc2_stats', JSON.stringify({
       correct: stats.correct, wrong: stats.wrong, bestStreak: stats.bestStreak,
       noteStats, chordStats, noteWeights, chordWeights,
+      timingSum: timingStats.sum, timingCount: timingStats.count,
     }));
   } catch(e) {}
 }
@@ -106,6 +110,8 @@ function loadStats() {
     if (s.chordStats)   Object.assign(chordStats,   s.chordStats);
     if (s.noteWeights)  Object.assign(noteWeights,  s.noteWeights);
     if (s.chordWeights) Object.assign(chordWeights, s.chordWeights);
+    if (typeof s.timingSum   === 'number') timingStats.sum   = s.timingSum;
+    if (typeof s.timingCount === 'number') timingStats.count = s.timingCount;
   } catch(e) {}
 }
 
@@ -132,6 +138,7 @@ function saveSettings() {
       showInversions:       state.showInversions,
       showDiagram:          state.showDiagram,
       showScaleDegrees:     state.showScaleDegrees,
+      showAvgTime:          state.showAvgTime,
       untimedMode:          state.untimedMode,
     }));
   } catch(e) {}
@@ -159,6 +166,7 @@ function loadSettings() {
     if (typeof s.showInversions === 'boolean') state.showInversions = s.showInversions;
     if (typeof s.showDiagram === 'boolean')       state.showDiagram       = s.showDiagram;
     if (typeof s.showScaleDegrees === 'boolean')  state.showScaleDegrees  = s.showScaleDegrees;
+    if (typeof s.showAvgTime === 'boolean')       state.showAvgTime       = s.showAvgTime;
     if (typeof s.untimedMode === 'boolean')   state.untimedMode   = s.untimedMode;
   } catch(e) {}
 }
@@ -1046,6 +1054,16 @@ function setFeedbackState(s, detectedNote) {
     s === 'correct' ? 'var(--green)' :
     s === 'wrong'   ? 'var(--red)'   : 'var(--text-dim)';
 
+  // Record response time on correct transition
+  if (s === 'correct' && prev !== 'correct' && anyInputActive() && state.cardShownAt !== null) {
+    const elapsed = (performance.now() - state.cardShownAt) / 1000;
+    timingStats.sum   += elapsed;
+    timingStats.count += 1;
+    state.cardShownAt = null;
+    updateAvgTimeUI();
+    saveStats();
+  }
+
   // Play chime on correct transition
   if (s === 'correct' && prev !== 'correct' && state.correctChime) playCorrectChime();
 
@@ -1114,12 +1132,30 @@ function updateStatsUI() {
   }
 }
 
+function updateAvgTimeUI() {
+  const row = document.getElementById('avgTimeRow');
+  if (!row) return;
+  row.style.display = state.showAvgTime ? '' : 'none';
+  if (!state.showAvgTime) return;
+  const el = document.getElementById('statAvgTime');
+  if (el) el.textContent = timingStats.count > 0
+    ? (timingStats.sum / timingStats.count).toFixed(1) + 's'
+    : '—';
+}
+
+function clearTiming() {
+  timingStats.sum = 0; timingStats.count = 0;
+  updateAvgTimeUI();
+  saveStats();
+}
+
 function clearStats() {
   stats.correct = 0; stats.wrong = 0; stats.streak = 0; stats.bestStreak = 0;
   Object.keys(noteStats).forEach(k => delete noteStats[k]);
   Object.keys(chordStats).forEach(k => delete chordStats[k]);
   Object.keys(noteWeights).forEach(k => delete noteWeights[k]);
   Object.keys(chordWeights).forEach(k => delete chordWeights[k]);
+  clearTiming();
   updateStatsUI();
   saveStats();
 }
@@ -1148,6 +1184,7 @@ function renderDisplay(item, animate = true) {
   cancelAutoAdvance();
   if (earHintTimer) { clearTimeout(earHintTimer); earHintTimer = null; }
   state.current = item;
+  state.cardShownAt = performance.now();
 
   const accChar     = item.acc === '#' ? '♯' : item.acc === 'b' ? '♭' : '';
   const inner       = accChar ? `${item.root}<sup>${accChar}</sup>` : item.root;
@@ -1348,6 +1385,7 @@ loadStats();
   applyTheme();
   updateModeUI();
   updateTimerUI();
+  updateAvgTimeUI();
   updateGlowPosition();
 })();
 
@@ -1458,6 +1496,8 @@ function syncToggles() {
   if (wt) wt.classList.toggle('on', state.weakSpotsOnly);
   const it = document.getElementById('inversionsToggle');
   if (it) it.classList.toggle('on', state.showInversions);
+  const at = document.getElementById('showAvgTimeToggle');
+  if (at) at.classList.toggle('on', state.showAvgTime);
   const sd = document.getElementById('showDegreesToggle');
   if (sd) sd.classList.toggle('on', state.showScaleDegrees);
   const dt = document.getElementById('showDiagramToggle');
@@ -1517,6 +1557,11 @@ document.addEventListener('click', e => {
       renderPianoVoicing(cur);
       renderInversionLabel(cur);
     }
+    saveSettings();
+  } else if (key === 'showAvgTime') {
+    state.showAvgTime = !state.showAvgTime;
+    tog.classList.toggle('on', state.showAvgTime);
+    updateAvgTimeUI();
     saveSettings();
   } else if (key === 'showDegrees') {
     state.showScaleDegrees = !state.showScaleDegrees;
@@ -1661,6 +1706,8 @@ overlay.addEventListener('click', closeSettingsPanel);
 closePanel.addEventListener('click', closeSettingsPanel);
 
 document.getElementById('clearStatsBtn').addEventListener('click', clearStats);
+const clearTimingBtn = document.getElementById('clearTimingBtn');
+if (clearTimingBtn) clearTimingBtn.addEventListener('click', clearTiming);
 if (summaryBtn) summaryBtn.addEventListener('click', openSummary);
 if (summaryOverlay) summaryOverlay.addEventListener('click', closeSummary);
 const closeSummaryBtn = document.getElementById('closeSummary');
@@ -1684,6 +1731,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   state.currentInversion = 0;
   state.showDiagram = true;
   state.showScaleDegrees = true;
+  state.showAvgTime = false;
   state.untimedMode = false;
   if (midiLowSlider) { midiLowSlider.value = 0; midiLowVal.textContent = 'All'; }
   updateIntervalUI();

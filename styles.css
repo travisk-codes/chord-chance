@@ -593,6 +593,45 @@ header {
   color: var(--text-dim);
 }
 
+.avg-time-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.avg-time-label {
+  font-family: 'Syne', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  flex: 1;
+}
+.avg-time-row .stat-val {
+  font-size: 18px;
+}
+.clear-timing-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 14px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.clear-timing-btn:hover { color: var(--text); border-color: var(--gold); }
+
 /* Reset / Clear button */
 .reset-btn {
   width: 100%;
