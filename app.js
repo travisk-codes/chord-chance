@@ -69,6 +69,8 @@ const state = {
   bpm: 80,
   showInversions: false,
   currentInversion: 0,
+  showDiagram: true,
+  untimedMode: false,
 };
 
 function anyInputActive() {
@@ -125,6 +127,8 @@ function saveSettings() {
       bpmMode:              state.bpmMode,
       bpm:                  state.bpm,
       showInversions:       state.showInversions,
+      showDiagram:          state.showDiagram,
+      untimedMode:          state.untimedMode,
     }));
   } catch(e) {}
 }
@@ -148,6 +152,8 @@ function loadSettings() {
     if (typeof s.bpmMode === 'boolean') state.bpmMode = s.bpmMode;
     if (typeof s.bpm === 'number') state.bpm = s.bpm;
     if (typeof s.showInversions === 'boolean') state.showInversions = s.showInversions;
+    if (typeof s.showDiagram === 'boolean')   state.showDiagram   = s.showDiagram;
+    if (typeof s.untimedMode === 'boolean')   state.untimedMode   = s.untimedMode;
   } catch(e) {}
 }
 
@@ -751,7 +757,7 @@ const INV_LABELS = ['Root pos.', '1st inv.', '2nd inv.', '3rd inv.'];
 
 function renderPianoVoicing(item) {
   if (!pianoDisplay) return;
-  if (!item || state.mode !== 'chord' || !item.chord) {
+  if (!item || state.mode !== 'chord' || !item.chord || !state.showDiagram) {
     pianoDisplay.style.opacity = '0';
     return;
   }
@@ -1156,7 +1162,14 @@ function updateModeUI() {
 
 let timerStart = null, rafId = null, lastTickSecond = -1;
 
+function updateTimerUI() {
+  const hide = state.untimedMode;
+  document.querySelector('.progress-wrap').style.display = hide ? 'none' : '';
+  timerLabel.style.display = hide ? 'none' : '';
+}
+
 function startTimer() {
+  if (state.untimedMode) return;
   stopTimer();
   timerStart     = performance.now();
   lastTickSecond = -1;
@@ -1272,6 +1285,7 @@ loadStats();
 
   applyTheme();
   updateModeUI();
+  updateTimerUI();
   updateGlowPosition();
 })();
 
@@ -1380,6 +1394,10 @@ function syncToggles() {
   if (wt) wt.classList.toggle('on', state.weakSpotsOnly);
   const it = document.getElementById('inversionsToggle');
   if (it) it.classList.toggle('on', state.showInversions);
+  const dt = document.getElementById('showDiagramToggle');
+  if (dt) dt.classList.toggle('on', state.showDiagram);
+  const ut = document.getElementById('untimedToggle');
+  if (ut) ut.classList.toggle('on', state.untimedMode);
   if (midiLowSlider) {
     const octave = state.midiMinNote > 0 ? Math.round((state.midiMinNote - 24) / 12) : 0;
     midiLowSlider.value = octave;
@@ -1428,6 +1446,19 @@ document.addEventListener('click', e => {
       }
       renderPianoVoicing(cur);
     }
+    saveSettings();
+  } else if (key === 'showDiagram') {
+    state.showDiagram = !state.showDiagram;
+    tog.classList.toggle('on', state.showDiagram);
+    const cur = history[histIdx];
+    if (cur) renderPianoVoicing(cur);
+    saveSettings();
+  } else if (key === 'untimed') {
+    state.untimedMode = !state.untimedMode;
+    tog.classList.toggle('on', state.untimedMode);
+    if (state.untimedMode && state.playing) stopTimer();
+    else if (!state.untimedMode && state.playing) startTimer();
+    updateTimerUI();
     saveSettings();
   }
 });
@@ -1573,10 +1604,13 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   state.bpm = 80;
   state.showInversions = false;
   state.currentInversion = 0;
+  state.showDiagram = true;
+  state.untimedMode = false;
   if (midiLowSlider) { midiLowSlider.value = 0; midiLowVal.textContent = 'All'; }
   updateIntervalUI();
   syncToggles();
   updateModeUI();
+  updateTimerUI();
   state.activeNotes  = new Set(ROOT_NOTES);
   state.activeAcc    = new Set(['natural','sharp','flat']);
   state.activeChords = new Set(CHORD_TYPES.map(c => c.val));
