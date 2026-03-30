@@ -624,15 +624,9 @@ function evaluateMidi() {
   // Update MIDI note display
   if (midiNoteDisplay) {
     if (state.twoHandMode && state.mode === 'chord') {
-      // Group by octave, show notes with octave numbers
-      const byOct = {};
-      for (const n of [...heldMidiNotes].sort((a, b) => a - b)) {
-        const oct = Math.floor(n / 12) - 1;
-        if (!byOct[oct]) byOct[oct] = [];
-        byOct[oct].push(SEMITONE_NAMES[n % 12]);
-      }
-      midiNoteDisplay.textContent = Object.keys(byOct).sort((a, b) => a - b)
-        .map(oct => byOct[oct].join(' ') + oct).join(' / ');
+      // Show each note with its octave number so the user can see span
+      midiNoteDisplay.textContent = [...heldMidiNotes].sort((a, b) => a - b)
+        .map(n => SEMITONE_NAMES[n % 12] + (Math.floor(n / 12) - 1)).join('  ');
     } else {
       const sortedPCs = [...heldPCs].sort((a, b) => a - b);
       midiNoteDisplay.textContent = sortedPCs.map(pc => SEMITONE_NAMES[pc]).join(' · ');
@@ -682,12 +676,15 @@ function evaluateMidi() {
         }
       }
 
-      // Two-hand mode: matching chord notes must span at least 2 octaves
+      // Two-hand mode: matching chord notes must span at least a full octave (12 semitones)
       if (state.twoHandMode) {
-        const matchingOctaves = new Set(
-          [...heldMidiNotes].filter(n => expected.has(n % 12)).map(n => Math.floor(n / 12))
-        );
-        if (matchingOctaves.size < 2) {
+        const matchingMidi = [...heldMidiNotes]
+          .filter(n => expected.has(n % 12))
+          .sort((a, b) => a - b);
+        const span = matchingMidi.length >= 2
+          ? matchingMidi[matchingMidi.length - 1] - matchingMidi[0]
+          : 0;
+        if (span < 12) {
           wrongMidi(null, 'Play in another octave');
           return;
         }
