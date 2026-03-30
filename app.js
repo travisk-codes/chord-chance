@@ -16,9 +16,19 @@ function debugDump(label = 'dump') {
   const heldNames = held.map(n => SEMITONE_NAMES[n%12] + (Math.floor(n/12)-1));
   const heldPCs   = [...new Set(held.map(n=>n%12))].map(pc=>SEMITONE_NAMES[pc]);
 
+  // Pool snapshot
+  const pool = buildPool();
+  const chordPool = [...state.activeChords];
+  const topNoteWeights = Object.entries(noteWeights)
+    .sort((a,b) => b[1]-a[1]).slice(0,5)
+    .map(([k,v]) => `${k}:${v.toFixed(2)}`).join(' ');
+  const topChordWeights = Object.entries(chordWeights)
+    .sort((a,b) => b[1]-a[1]).slice(0,5)
+    .map(([k,v]) => `${k}:${v.toFixed(2)}`).join(' ');
+
   console.group(`[CC] ${label}`);
   console.log('── card ──────────────────');
-  console.log('  chord:       ', rootStr + (ct ? ' ' + ct.label : ''));
+  console.log('  current:     ', rootStr + (ct ? ' ' + ct.label : ' (note)'));
   console.log('  expected PCs:', expected ? expected.join(' ') : 'n/a');
   console.log('  inversion:   ', state.showInversions ? state.currentInversion : 'off');
   console.log('── input ─────────────────');
@@ -33,6 +43,14 @@ function debugDump(label = 'dump') {
   console.log('  showInv:     ', state.showInversions);
   console.log('  weakSpots:   ', state.weakSpotsOnly);
   console.log('  untimedMode: ', state.untimedMode);
+  console.log('── pool ──────────────────');
+  console.log('  notePool sz: ', pool.length, '/', ROOT_NOTES.length * 3, '(all combos)');
+  console.log('  chordPool sz:', chordPool.length, '/', CHORD_TYPES.length);
+  console.log('  activeNotes: ', [...state.activeNotes].join(' '));
+  console.log('  activeAcc:   ', [...state.activeAcc].join(' '));
+  console.log('  activeChords:', [...state.activeChords].join(' '));
+  console.log('  topNoteW:    ', topNoteWeights || '(none)');
+  console.log('  topChordW:   ', topChordWeights || '(none)');
   console.log('── input sources ─────────');
   console.log('  midi:        ', state.midiActive);
   console.log('  mic:         ', state.micActive);
@@ -285,6 +303,8 @@ function nextItem(avoidCurrent = true) {
   let chordPool = [...state.activeChords];
   if (state.mode === 'chord' && !chordPool.length) return null;
 
+  const prevKey = state.current.root + state.current.acc + (state.current.chord ?? '');
+
   if (state.weakSpotsOnly) {
     const weakNotes = pool.filter(item => isWeak(item.root + item.acc, noteStats));
     if (weakNotes.length) pool = weakNotes;
@@ -294,6 +314,9 @@ function nextItem(avoidCurrent = true) {
     }
   }
 
+  dbg('nextItem — pool:', pool.length, 'chordPool:', chordPool.length,
+      'weakSpotsOnly:', state.weakSpotsOnly, 'prev:', prevKey);
+
   let candidate, chord, tries = 0;
   do {
     candidate = weightedRandom(pool, item => item.root + item.acc, noteWeights);
@@ -301,6 +324,8 @@ function nextItem(avoidCurrent = true) {
     if (state.mode === 'chord') {
       chord = weightedRandom(chordPool, v => v, chordWeights);
     }
+    const key = candidate.root + candidate.acc + (chord ?? '');
+    dbg(`  try ${tries + 1}: ${key}${key === prevKey ? ' ← DUPLICATE' : ''}`);
     tries++;
   } while (
     avoidCurrent && tries < 10 &&
@@ -308,6 +333,11 @@ function nextItem(avoidCurrent = true) {
     candidate.acc  === state.current.acc  &&
     chord          === state.current.chord
   );
+
+  const finalKey = candidate.root + candidate.acc + (chord ?? '');
+  const isDupe = finalKey === prevKey;
+  if (isDupe) dbg('  !! gave up after', tries, 'tries — returning duplicate');
+  dbg('  → picked:', finalKey, isDupe ? '(DUPE)' : '');
 
   if (state.showInversions && chord) {
     const ct = CHORD_TYPES.find(c => c.val === chord);
@@ -317,6 +347,7 @@ function nextItem(avoidCurrent = true) {
     state.currentInversion = 0;
   }
 
+  dbg('  inversion:', state.currentInversion);
   return { root: candidate.root, acc: candidate.acc, chord };
 }
 
@@ -1441,7 +1472,8 @@ function renderDisplay(item, animate = true) {
   if (earHintTimer) { clearTimeout(earHintTimer); earHintTimer = null; }
   state.current = item;
   state.cardShownAt = performance.now();
-  dbg('new card —', item.root + item.acc, item.chord ?? '', state.twoHandMode ? '[two-hand]' : '');
+  const _ct = item.chord ? CHORD_TYPES.find(c => c.val === item.chord) : null;
+  dbg(`new card — ${item.root + item.acc} ${_ct ? _ct.label : '(note)'} inv:${state.currentInversion} ${state.twoHandMode ? '[two-hand]' : ''}`);
 
   const accChar     = item.acc === '#' ? '♯' : item.acc === 'b' ? '♭' : '';
   const inner       = accChar ? `${item.root}<sup>${accChar}</sup>` : item.root;
