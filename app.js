@@ -663,12 +663,17 @@ function evaluateMidi() {
 
     const coverage = chordCoverage(heldPCs, expected);
 
-    if (coverage >= 0.8 && extraCount <= 1) {
-      // All the right notes — check inversion bass if enabled
+    // In two-hand mode allow up to 2 extra notes (one accidental per hand)
+    const maxExtra = state.twoHandMode ? 2 : 1;
+
+    // Compute root PC once for both inversion and two-hand checks
+    const rootStr = state.current.root + (state.current.acc === '#' ? '#' : state.current.acc === 'b' ? 'b' : '');
+    const rootPC  = NOTE_TO_SEMITONE[rootStr] ?? 0;
+
+    if (coverage >= 0.8 && extraCount <= maxExtra) {
+      // Check inversion bass if enabled
       if (state.showInversions) {
         const ct = CHORD_TYPES.find(c => c.val === state.current.chord);
-        const rootStr = state.current.root + (state.current.acc === '#' ? '#' : state.current.acc === 'b' ? 'b' : '');
-        const rootPC  = NOTE_TO_SEMITONE[rootStr] ?? 0;
         const expectedBassPC = ct ? (rootPC + ct.intervals[state.currentInversion]) % 12 : rootPC;
         if (lowestPC !== expectedBassPC) {
           wrongMidi(SEMITONE_NAMES[lowestPC] + ' bass');
@@ -676,18 +681,18 @@ function evaluateMidi() {
         }
       }
 
-      // Two-hand mode: every chord tone must appear in at least 2 octave groups
-      // (i.e. the complete chord must be playable in ≥2 distinct registers)
+      // Two-hand mode: the full chord must be present in ≥2 chord-relative octaves.
+      // Use (n - rootPC) / 12 so the octave boundary falls at the chord root, not at C.
+      // This keeps natural voicings like G3-B3-D4 in the same chord-octave.
       if (state.twoHandMode) {
-        // For each expected pitch class, collect which MIDI octave groups contain it
         const octavesForPC = {};
         for (const pc of expected) octavesForPC[pc] = new Set();
         for (const n of heldMidiNotes) {
           const pc = n % 12;
-          if (expected.has(pc)) octavesForPC[pc].add(Math.floor(n / 12));
+          if (expected.has(pc)) octavesForPC[pc].add(Math.floor((n - rootPC) / 12));
         }
-        // Intersection: octave groups that have ALL chord tones present
-        let completedOctaves = octavesForPC[[...expected][0]];
+        // Intersection: chord-relative octaves where ALL tones are present
+        let completedOctaves = new Set(octavesForPC[[...expected][0]]);
         for (const pc of expected) {
           completedOctaves = new Set([...completedOctaves].filter(o => octavesForPC[pc].has(o)));
         }
