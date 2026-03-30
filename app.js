@@ -1,3 +1,53 @@
+// ─── DEBUG ─────────────────────────────────────────────────────────────────
+
+const DEBUG = false; // set to true to enable verbose console output
+
+function dbg(...args) { if (DEBUG) console.log('[CC]', ...args); }
+
+function debugDump(label = 'dump') {
+  if (!DEBUG) return;
+  const rootStr = state.current.root + state.current.acc;
+  const ct = CHORD_TYPES.find(c => c.val === state.current.chord);
+  const rootPC = NOTE_TO_SEMITONE[rootStr] ?? null;
+  const expected = (state.mode === 'chord' && ct)
+    ? [...new Set(ct.intervals.map(i => (rootPC + i) % 12))].map(pc => SEMITONE_NAMES[pc])
+    : null;
+  const held = [...heldMidiNotes].sort((a,b)=>a-b);
+  const heldNames = held.map(n => SEMITONE_NAMES[n%12] + (Math.floor(n/12)-1));
+  const heldPCs   = [...new Set(held.map(n=>n%12))].map(pc=>SEMITONE_NAMES[pc]);
+
+  console.group(`[CC] ${label}`);
+  console.log('── card ──────────────────');
+  console.log('  chord:       ', rootStr + (ct ? ' ' + ct.label : ''));
+  console.log('  expected PCs:', expected ? expected.join(' ') : 'n/a');
+  console.log('  inversion:   ', state.showInversions ? state.currentInversion : 'off');
+  console.log('── input ─────────────────');
+  console.log('  held notes:  ', heldNames.join(' ') || '(none)');
+  console.log('  held PCs:    ', heldPCs.join(' ')   || '(none)');
+  console.log('  midi raw:    ', held.join(' ')       || '(none)');
+  console.log('── mode / flags ──────────');
+  console.log('  mode:        ', state.mode);
+  console.log('  feedbackState', state.feedbackState);
+  console.log('  twoHandMode: ', state.twoHandMode);
+  console.log('  earMode:     ', state.earMode);
+  console.log('  showInv:     ', state.showInversions);
+  console.log('  weakSpots:   ', state.weakSpotsOnly);
+  console.log('  untimedMode: ', state.untimedMode);
+  console.log('── input sources ─────────');
+  console.log('  midi:        ', state.midiActive);
+  console.log('  mic:         ', state.micActive);
+  console.log('  desktop:     ', state.desktopActive);
+  console.log('  midiMinNote: ', state.midiMinNote);
+  console.log('── stats ─────────────────');
+  console.log('  correct:     ', stats.correct);
+  console.log('  wrong:       ', stats.wrong);
+  console.log('  streak:      ', stats.streak);
+  console.log('  bestStreak:  ', stats.bestStreak);
+  console.log('  wrongCounted:', wrongCountedMidi);
+  console.log('  penaltyTimer:', wrongPenaltyTimer !== null);
+  console.groupEnd();
+}
+
 // ─── DATA ──────────────────────────────────────────────────────────────────
 
 const ROOT_NOTES = ['C','D','E','F','G','A','B'];
@@ -580,6 +630,7 @@ function cancelWrongPenalty() {
 
 // Record wrong immediately (called 400 ms after a wrong chord is held)
 function fireWrongPenalty() {
+  dbg('fireWrongPenalty — streak reset');
   wrongCountedMidi = true;
   const noteKey  = state.current.root + state.current.acc;
   const chordKey = state.current.chord;
@@ -618,6 +669,7 @@ function evaluateMidi() {
     if (midiNoteDisplay) midiNoteDisplay.textContent = '';
     return;
   }
+  dbg('evaluateMidi — held:', [...heldMidiNotes].sort((a,b)=>a-b).map(n=>SEMITONE_NAMES[n%12]+(Math.floor(n/12)-1)).join(' '));
 
   const heldPCs = new Set([...heldMidiNotes].map(n => n % 12));
 
@@ -670,11 +722,16 @@ function evaluateMidi() {
     const rootStr = state.current.root + (state.current.acc === '#' ? '#' : state.current.acc === 'b' ? 'b' : '');
     const rootPC  = NOTE_TO_SEMITONE[rootStr] ?? 0;
 
+    dbg('chord check — coverage:', coverage.toFixed(2), 'extra:', extraCount, '/', maxExtra,
+        'expected:', [...expected].map(pc=>SEMITONE_NAMES[pc]).join(' '),
+        'rootPC:', SEMITONE_NAMES[rootPC]);
+
     if (coverage >= 0.8 && extraCount <= maxExtra) {
       // Check inversion bass if enabled
       if (state.showInversions) {
         const ct = CHORD_TYPES.find(c => c.val === state.current.chord);
         const expectedBassPC = ct ? (rootPC + ct.intervals[state.currentInversion]) % 12 : rootPC;
+        dbg('inversion check — lowestPC:', SEMITONE_NAMES[lowestPC], 'expectedBass:', SEMITONE_NAMES[expectedBassPC]);
         if (lowestPC !== expectedBassPC) {
           wrongMidi(SEMITONE_NAMES[lowestPC] + ' bass');
           return;
@@ -696,15 +753,19 @@ function evaluateMidi() {
         for (const pc of expected) {
           completedOctaves = new Set([...completedOctaves].filter(o => octavesForPC[pc].has(o)));
         }
+        dbg('two-hand — octavesForPC:', Object.fromEntries(Object.entries(octavesForPC).map(([k,v])=>[SEMITONE_NAMES[k],[...v]])),
+            'completedOctaves:', [...completedOctaves]);
         if (completedOctaves.size < 2) {
           wrongMidi(null, 'Play full chord in another octave');
           return;
         }
       }
 
+      dbg('→ CORRECT');
       cancelWrongPenalty();
       setFeedbackState('correct');
     } else if (heldPCs.size > 0) {
+      dbg('→ WRONG (coverage/extra fail)');
       wrongMidi(SEMITONE_NAMES[lowestPC]);
     }
   }
@@ -1120,6 +1181,7 @@ function closeSummary() {
 
 function setFeedbackState(s, detectedNote, customMsg) {
   const prev = state.feedbackState;
+  if (prev !== s) dbg('feedbackState:', prev, '→', s, detectedNote ?? customMsg ?? '');
   state.feedbackState = s;
   noteDisplay.classList.remove('state-correct', 'state-wrong');
   if (s === 'correct') noteDisplay.classList.add('state-correct');
@@ -1359,6 +1421,7 @@ function renderDisplay(item, animate = true) {
   if (earHintTimer) { clearTimeout(earHintTimer); earHintTimer = null; }
   state.current = item;
   state.cardShownAt = performance.now();
+  dbg('new card —', item.root + item.acc, item.chord ?? '', state.twoHandMode ? '[two-hand]' : '');
 
   const accChar     = item.acc === '#' ? '♯' : item.acc === 'b' ? '♭' : '';
   const inner       = accChar ? `${item.root}<sup>${accChar}</sup>` : item.root;
@@ -1538,6 +1601,11 @@ function updateIntervalUI() {
 }
 
 // ─── INIT ──────────────────────────────────────────────────────────────────
+
+// Expose debug helper globally: call debugDump() in the browser console,
+// then paste the output here with a description of the bug.
+window.debugDump = debugDump;
+window.CC_DEBUG  = () => { /* flip DEBUG at runtime — reload required for full effect */ };
 
 loadSettings();
 loadStats();
