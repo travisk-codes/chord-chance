@@ -305,6 +305,9 @@ function nextItem(avoidCurrent = true) {
 
   const prevKey = state.current.root + state.current.acc + (state.current.chord ?? '');
 
+  const fullPool      = pool;
+  const fullChordPool = chordPool;
+
   if (state.weakSpotsOnly) {
     const weakNotes = pool.filter(item => isWeak(item.root + item.acc, noteStats));
     if (weakNotes.length) pool = weakNotes;
@@ -312,6 +315,19 @@ function nextItem(avoidCurrent = true) {
       const weakChords = chordPool.filter(v => isWeak(v, chordStats));
       if (weakChords.length) chordPool = weakChords;
     }
+  }
+
+  // If the weak-spots pool is a single option that matches the current card,
+  // there's no alternative — fall back to the full pool so we don't loop forever.
+  const poolLocked =
+    pool.length === 1 &&
+    pool[0].root === state.current.root &&
+    pool[0].acc  === state.current.acc  &&
+    (state.mode !== 'chord' || (chordPool.length === 1 && chordPool[0] === state.current.chord));
+  if (poolLocked) {
+    dbg('nextItem — weak pool is only current card, falling back to full pool');
+    pool      = fullPool;
+    chordPool = fullChordPool;
   }
 
   dbg('nextItem — pool:', pool.length, 'chordPool:', chordPool.length,
