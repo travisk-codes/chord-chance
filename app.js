@@ -738,24 +738,44 @@ function evaluateMidi() {
         }
       }
 
-      // Two-hand mode: the full chord must be present in ≥2 chord-relative octaves.
-      // Use (n - rootPC) / 12 so the octave boundary falls at the chord root, not at C.
-      // This keeps natural voicings like G3-B3-D4 in the same chord-octave.
+      // Two-hand mode: find all notes that can start a complete ascending voicing
+      // of the chord, then require two such starts ≥12 semitones apart.
+      // This handles any inversion and any voicing order without octave-boundary issues.
       if (state.twoHandMode) {
-        const octavesForPC = {};
-        for (const pc of expected) octavesForPC[pc] = new Set();
+        const notesForPC = {};
+        for (const pc of expected) notesForPC[pc] = [];
         for (const n of heldMidiNotes) {
           const pc = n % 12;
-          if (expected.has(pc)) octavesForPC[pc].add(Math.floor((n - rootPC) / 12));
+          if (expected.has(pc)) notesForPC[pc].push(n);
         }
-        // Intersection: chord-relative octaves where ALL tones are present
-        let completedOctaves = new Set(octavesForPC[[...expected][0]]);
-        for (const pc of expected) {
-          completedOctaves = new Set([...completedOctaves].filter(o => octavesForPC[pc].has(o)));
+        for (const pc of expected) notesForPC[pc].sort((a, b) => a - b);
+
+        // Try to build a complete ascending voicing starting from startNote.
+        // PCs are ordered by ascending interval from startNote's pitch class.
+        function tryVoicing(startNote) {
+          const startPC = startNote % 12;
+          const orderedPCs = [...expected].sort(
+            (a, b) => ((a - startPC + 12) % 12) - ((b - startPC + 12) % 12)
+          );
+          let cursor = startNote;
+          for (const pc of orderedPCs) {
+            const note = notesForPC[pc].find(n => n >= cursor);
+            if (note === undefined) return false;
+            cursor = note + 1;
+          }
+          return true;
         }
-        dbg('two-hand — octavesForPC:', Object.fromEntries(Object.entries(octavesForPC).map(([k,v])=>[SEMITONE_NAMES[k],[...v]])),
-            'completedOctaves:', [...completedOctaves]);
-        if (completedOctaves.size < 2) {
+
+        const voicingStarts = [...heldMidiNotes]
+          .filter(n => expected.has(n % 12))
+          .sort((a, b) => a - b)
+          .filter(n => tryVoicing(n));
+
+        const twoHandOk = voicingStarts.length >= 2 &&
+          voicingStarts[voicingStarts.length - 1] - voicingStarts[0] >= 12;
+
+        dbg('two-hand voicingStarts:', voicingStarts, twoHandOk ? '✓' : '✗');
+        if (!twoHandOk) {
           wrongMidi(null, 'Play full chord in another octave');
           return;
         }
