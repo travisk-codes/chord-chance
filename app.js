@@ -294,20 +294,20 @@ function nextItem(avoidCurrent = true) {
     }
   }
 
-  let candidate, tries = 0;
+  let candidate, chord, tries = 0;
   do {
     candidate = weightedRandom(pool, item => item.root + item.acc, noteWeights);
-    tries++;
-  } while (avoidCurrent && tries < 8 && candidate.root === state.current.root && candidate.acc === state.current.acc);
-
-  let chord = null;
-  if (state.mode === 'chord') {
-    let chordTries = 0;
-    do {
+    chord = null;
+    if (state.mode === 'chord') {
       chord = weightedRandom(chordPool, v => v, chordWeights);
-      chordTries++;
-    } while (avoidCurrent && chordTries < 8 && chord === state.current.chord);
-  }
+    }
+    tries++;
+  } while (
+    avoidCurrent && tries < 10 &&
+    candidate.root === state.current.root &&
+    candidate.acc  === state.current.acc  &&
+    chord          === state.current.chord
+  );
 
   if (state.showInversions && chord) {
     const ct = CHORD_TYPES.find(c => c.val === chord);
