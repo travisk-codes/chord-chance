@@ -676,16 +676,23 @@ function evaluateMidi() {
         }
       }
 
-      // Two-hand mode: matching chord notes must span at least a full octave (12 semitones)
+      // Two-hand mode: every chord tone must appear in at least 2 octave groups
+      // (i.e. the complete chord must be playable in ≥2 distinct registers)
       if (state.twoHandMode) {
-        const matchingMidi = [...heldMidiNotes]
-          .filter(n => expected.has(n % 12))
-          .sort((a, b) => a - b);
-        const span = matchingMidi.length >= 2
-          ? matchingMidi[matchingMidi.length - 1] - matchingMidi[0]
-          : 0;
-        if (span < 12) {
-          wrongMidi(null, 'Play in another octave');
+        // For each expected pitch class, collect which MIDI octave groups contain it
+        const octavesForPC = {};
+        for (const pc of expected) octavesForPC[pc] = new Set();
+        for (const n of heldMidiNotes) {
+          const pc = n % 12;
+          if (expected.has(pc)) octavesForPC[pc].add(Math.floor(n / 12));
+        }
+        // Intersection: octave groups that have ALL chord tones present
+        let completedOctaves = octavesForPC[[...expected][0]];
+        for (const pc of expected) {
+          completedOctaves = new Set([...completedOctaves].filter(o => octavesForPC[pc].has(o)));
+        }
+        if (completedOctaves.size < 2) {
+          wrongMidi(null, 'Play full chord in another octave');
           return;
         }
       }
