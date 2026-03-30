@@ -105,6 +105,17 @@ header {
   text-transform: uppercase;
   color: var(--gold);
   opacity: 0.9;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.app-version {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  opacity: 0.7;
+  text-transform: uppercase;
 }
 
 .header-right {
