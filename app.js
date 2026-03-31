@@ -144,6 +144,7 @@ const state = {
   showAvgTime: false,
   cardShownAt: null,
   twoHandMode: false,
+  showMidiNotes: true,
 };
 
 function anyInputActive() {
@@ -153,6 +154,9 @@ function anyInputActive() {
 const stats = { correct: 0, wrong: 0, streak: 0, bestStreak: 0 };
 const timingEntries = []; // { ts: Date.now(), sec: number }
 const MAX_TIMING = 300;
+const MAX_KEY_TIMINGS = 30; // per chord-type or note key
+const chordTypeTimings = {}; // { [chordVal]: [{ts, sec}] }
+const noteTimings      = {}; // { [noteKey]:  [{ts, sec}] }
 
 const noteWeights = {};
 const chordWeights = {};
@@ -165,6 +169,7 @@ function saveStats() {
       correct: stats.correct, wrong: stats.wrong, bestStreak: stats.bestStreak,
       noteStats, chordStats, noteWeights, chordWeights,
       timingEntries: timingEntries.slice(-MAX_TIMING),
+      chordTypeTimings, noteTimings,
     }));
   } catch(e) {}
 }
@@ -181,6 +186,8 @@ function loadStats() {
     if (s.noteWeights)  Object.assign(noteWeights,  s.noteWeights);
     if (s.chordWeights) Object.assign(chordWeights, s.chordWeights);
     if (Array.isArray(s.timingEntries)) timingEntries.push(...s.timingEntries.slice(-MAX_TIMING));
+    if (s.chordTypeTimings && typeof s.chordTypeTimings === 'object') Object.assign(chordTypeTimings, s.chordTypeTimings);
+    if (s.noteTimings      && typeof s.noteTimings      === 'object') Object.assign(noteTimings,      s.noteTimings);
   } catch(e) {}
 }
 
@@ -210,6 +217,7 @@ function saveSettings() {
       showAvgTime:          state.showAvgTime,
       untimedMode:          state.untimedMode,
       twoHandMode:          state.twoHandMode,
+      showMidiNotes:        state.showMidiNotes,
     }));
   } catch(e) {}
 }
@@ -239,6 +247,7 @@ function loadSettings() {
     if (typeof s.showAvgTime === 'boolean')       state.showAvgTime       = s.showAvgTime;
     if (typeof s.untimedMode === 'boolean')   state.untimedMode   = s.untimedMode;
     if (typeof s.twoHandMode === 'boolean')   state.twoHandMode   = s.twoHandMode;
+    if (typeof s.showMidiNotes === 'boolean') state.showMidiNotes = s.showMidiNotes;
   } catch(e) {}
 }
 
@@ -297,6 +306,30 @@ function isWeak(key, statMap) {
   return s && (s.c + s.w) >= 3 && s.c / (s.c + s.w) < 0.6;
 }
 
+// ─── TIMING HELPERS ────────────────────────────────────────────────────────
+
+function keyAvgTime(key, timingMap) {
+  const entries = timingMap[key];
+  if (!entries || entries.length < 3) return null;
+  return entries.reduce((s, e) => s + e.sec, 0) / entries.length;
+}
+
+// Returns a multiplier ≥ 0.25, ≤ 4.0 relative to global average.
+// avg > globalAvg → > 1 (slow chord, boosted); avg < globalAvg → < 1 (fast chord, reduced).
+// Returns 1.0 when there is no per-key or global data.
+function timingMultiplier(keyAvg) {
+  if (keyAvg === null) return 1.0;
+  const globalAvg = windowAvg(null);
+  if (!globalAvg) return 1.0;
+  return Math.min(4.0, Math.max(0.25, keyAvg / globalAvg));
+}
+
+function pushKeyTiming(key, timingMap, entry) {
+  if (!timingMap[key]) timingMap[key] = [];
+  timingMap[key].push(entry);
+  if (timingMap[key].length > MAX_KEY_TIMINGS) timingMap[key].shift();
+}
+
 function nextItem(avoidCurrent = true) {
   let pool = buildPool();
   if (!pool.length) return null;
@@ -333,12 +366,32 @@ function nextItem(avoidCurrent = true) {
   dbg('nextItem — pool:', pool.length, 'chordPool:', chordPool.length,
       'weakSpotsOnly:', state.weakSpotsOnly, 'prev:', prevKey);
 
+  // When focusing weak spots, mix accuracy weights with a timing multiplier so
+  // chords you play slowly appear more often and quick chords appear less often.
+  let useNoteWeights  = noteWeights;
+  let useChordWeights = chordWeights;
+  if (state.weakSpotsOnly) {
+    useNoteWeights = {};
+    for (const item of pool) {
+      const key = item.root + item.acc;
+      const mul = timingMultiplier(keyAvgTime(key, noteTimings));
+      useNoteWeights[key] = (noteWeights[key] ?? 1) * mul;
+    }
+    useChordWeights = {};
+    for (const v of chordPool) {
+      const mul = timingMultiplier(keyAvgTime(v, chordTypeTimings));
+      useChordWeights[v] = (chordWeights[v] ?? 1) * mul;
+    }
+    dbg('  timing-adjusted note weights:', JSON.stringify(useNoteWeights));
+    dbg('  timing-adjusted chord weights:', JSON.stringify(useChordWeights));
+  }
+
   let candidate, chord, tries = 0;
   do {
-    candidate = weightedRandom(pool, item => item.root + item.acc, noteWeights);
+    candidate = weightedRandom(pool, item => item.root + item.acc, useNoteWeights);
     chord = null;
     if (state.mode === 'chord') {
-      chord = weightedRandom(chordPool, v => v, chordWeights);
+      chord = weightedRandom(chordPool, v => v, useChordWeights);
     }
     const key = candidate.root + candidate.acc + (chord ?? '');
     dbg(`  try ${tries + 1}: ${key}${key === prevKey ? ' ← DUPLICATE' : ''}`);
@@ -733,8 +786,8 @@ function evaluateMidi() {
 
   const heldPCs = new Set([...heldMidiNotes].map(n => n % 12));
 
-  // Update MIDI note display
-  if (midiNoteDisplay) {
+  // Update MIDI note display (only when toggle is on)
+  if (midiNoteDisplay && state.showMidiNotes) {
     if (state.twoHandMode && state.mode === 'chord') {
       // Show each note with its octave number so the user can see span
       midiNoteDisplay.textContent = [...heldMidiNotes].sort((a, b) => a - b)
@@ -743,6 +796,8 @@ function evaluateMidi() {
       const sortedPCs = [...heldPCs].sort((a, b) => a - b);
       midiNoteDisplay.textContent = sortedPCs.map(pc => SEMITONE_NAMES[pc]).join(' · ');
     }
+  } else if (midiNoteDisplay && !state.showMidiNotes) {
+    midiNoteDisplay.textContent = '';
   }
 
   // Helper: set wrong state and start penalty timer (only once per card)
@@ -1293,8 +1348,15 @@ function setFeedbackState(s, detectedNote, customMsg) {
   // Record response time on correct transition
   if (s === 'correct' && prev !== 'correct' && anyInputActive() && state.cardShownAt !== null) {
     const elapsed = (performance.now() - state.cardShownAt) / 1000;
-    timingEntries.push({ ts: Date.now(), sec: elapsed });
+    const entry = { ts: Date.now(), sec: elapsed };
+    timingEntries.push(entry);
     if (timingEntries.length > MAX_TIMING) timingEntries.shift();
+    // Per-chord-type timing (drives weak-spots timing multiplier)
+    const chordKey = state.current.chord;
+    if (chordKey) pushKeyTiming(chordKey, chordTypeTimings, entry);
+    // Per-note-key timing
+    const noteKey = state.current.root + state.current.acc;
+    pushKeyTiming(noteKey, noteTimings, entry);
     state.cardShownAt = null;
     updateAvgTimeUI();
     renderTimingChart();
@@ -1466,6 +1528,8 @@ function renderTimingChart() {
 
 function clearTiming() {
   timingEntries.length = 0;
+  Object.keys(chordTypeTimings).forEach(k => delete chordTypeTimings[k]);
+  Object.keys(noteTimings).forEach(k => delete noteTimings[k]);
   updateAvgTimeUI();
   renderTimingChart();
   saveStats();
@@ -1841,6 +1905,8 @@ function syncToggles() {
   if (ut) ut.classList.toggle('on', state.untimedMode);
   const th = document.getElementById('twoHandToggle');
   if (th) th.classList.toggle('on', state.twoHandMode);
+  const mn = document.getElementById('showMidiNotesToggle');
+  if (mn) mn.classList.toggle('on', state.showMidiNotes);
   if (midiLowSlider) {
     const octave = state.midiMinNote > 0 ? Math.round((state.midiMinNote - 24) / 12) : 0;
     midiLowSlider.value = octave;
@@ -1923,6 +1989,11 @@ document.addEventListener('click', e => {
   } else if (key === 'twoHand') {
     state.twoHandMode = !state.twoHandMode;
     tog.classList.toggle('on', state.twoHandMode);
+    saveSettings();
+  } else if (key === 'showMidiNotes') {
+    state.showMidiNotes = !state.showMidiNotes;
+    tog.classList.toggle('on', state.showMidiNotes);
+    if (midiNoteDisplay && !state.showMidiNotes) midiNoteDisplay.textContent = '';
     saveSettings();
   }
 });
