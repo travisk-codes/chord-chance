@@ -670,7 +670,12 @@ const heldMidiNotes = new Set(); // MIDI note numbers currently held
 
 let wrongPenaltyTimer = null;
 let wrongCountedMidi  = false; // true if a wrong-chord penalty already fired for the current card
-let waitingForRelease = false; // true when carry-over notes from the previous card are still held
+let waitingForRelease  = false; // true when carry-over notes from the previous card are still held
+let correctConfirmTimer = null; // short delay before registering correct
+
+function cancelCorrectConfirm() {
+  if (correctConfirmTimer) { clearTimeout(correctConfirmTimer); correctConfirmTimer = null; }
+}
 
 function cancelWrongPenalty() {
   if (wrongPenaltyTimer) { clearTimeout(wrongPenaltyTimer); wrongPenaltyTimer = null; }
@@ -719,6 +724,7 @@ function evaluateMidi() {
   }
   if (heldMidiNotes.size === 0) {
     cancelWrongPenalty();
+    cancelCorrectConfirm();
     setFeedbackState('neutral');
     if (midiNoteDisplay) midiNoteDisplay.textContent = '';
     return;
@@ -741,6 +747,7 @@ function evaluateMidi() {
 
   // Helper: set wrong state and start penalty timer (only once per card)
   function wrongMidi(note, customMsg) {
+    cancelCorrectConfirm();
     setFeedbackState('wrong', note, customMsg);
     if (!wrongPenaltyTimer && !wrongCountedMidi) {
       wrongPenaltyTimer = setTimeout(() => {
@@ -835,10 +842,17 @@ function evaluateMidi() {
         }
       }
 
-      dbg('→ CORRECT');
+      dbg('→ CORRECT (confirm in 100ms)');
       cancelWrongPenalty();
-      setFeedbackState('correct');
+      if (!correctConfirmTimer) {
+        correctConfirmTimer = setTimeout(() => {
+          correctConfirmTimer = null;
+          dbg('→ CORRECT confirmed');
+          setFeedbackState('correct');
+        }, 100);
+      }
     } else if (heldPCs.size > 0) {
+      cancelCorrectConfirm();
       dbg('→ WRONG (coverage/extra fail)');
       wrongMidi(SEMITONE_NAMES[lowestPC]);
     }
@@ -1491,6 +1505,7 @@ function renderDisplay(item, animate = true) {
   if (!item) return;
   cancelAutoAdvance();
   cancelWrongPenalty();
+  cancelCorrectConfirm();
   wrongCountedMidi  = false;
   waitingForRelease = heldMidiNotes.size > 0;
   if (waitingForRelease) dbg('new card — carry-over notes held, waiting for release');
