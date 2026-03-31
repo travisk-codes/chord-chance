@@ -670,6 +670,7 @@ const heldMidiNotes = new Set(); // MIDI note numbers currently held
 
 let wrongPenaltyTimer = null;
 let wrongCountedMidi  = false; // true if a wrong-chord penalty already fired for the current card
+let waitingForRelease = false; // true when carry-over notes from the previous card are still held
 
 function cancelWrongPenalty() {
   if (wrongPenaltyTimer) { clearTimeout(wrongPenaltyTimer); wrongPenaltyTimer = null; }
@@ -710,6 +711,12 @@ function evaluateMidi() {
   // Once correct is detected, don't overwrite with neutral/wrong while notes
   // are still being processed — let the auto-advance timer run to completion.
   if (state.feedbackState === 'correct') return;
+  // If the card just changed with notes still held, wait for a full release
+  // so carry-over notes from the previous chord can't instantly satisfy the next one.
+  if (waitingForRelease) {
+    if (heldMidiNotes.size === 0) { waitingForRelease = false; dbg('release detected — now evaluating'); }
+    else return;
+  }
   if (heldMidiNotes.size === 0) {
     cancelWrongPenalty();
     setFeedbackState('neutral');
@@ -1484,7 +1491,9 @@ function renderDisplay(item, animate = true) {
   if (!item) return;
   cancelAutoAdvance();
   cancelWrongPenalty();
-  wrongCountedMidi = false;
+  wrongCountedMidi  = false;
+  waitingForRelease = heldMidiNotes.size > 0;
+  if (waitingForRelease) dbg('new card — carry-over notes held, waiting for release');
   if (earHintTimer) { clearTimeout(earHintTimer); earHintTimer = null; }
   state.current = item;
   state.cardShownAt = performance.now();
