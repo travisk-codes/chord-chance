@@ -653,24 +653,26 @@ header {
 }
 .clear-timing-btn:hover { color: var(--text); border-color: var(--gold); }
 
-/* ── TIMING CHART (fixed bottom-right) ── */
+/* ── TIMING CHART (full-width background strip at bottom) ── */
 .timing-chart-wrap {
   position: fixed;
-  bottom: 18px;
-  right: 14px;
-  z-index: 50;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px 10px 4px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 0;
   pointer-events: none;
-  opacity: 0.9;
+  display: flex;
+  flex-direction: column;
+  opacity: 0.75;
+}
+.timing-chart-wrap svg {
+  display: block;
+  width: 100%;
 }
 .chart-windows {
   display: flex;
-  justify-content: space-between;
-  gap: 2px;
-  margin-top: 5px;
+  justify-content: space-around;
+  padding: 3px 8px calc(28px + env(safe-area-inset-bottom, 0px));
 }
 .cw-item {
   display: flex;

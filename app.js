@@ -1444,7 +1444,10 @@ function updateAvgTimeUI() {
   if (!row) return;
   row.style.display = state.showAvgTime ? '' : 'none';
   if (!state.showAvgTime) return;
-  const ids = { avgTime1m: 60_000, avgTime5m: 300_000, avgTime10m: 600_000, avgTime30m: 1_800_000, avgTimeAll: null };
+  const ids = {
+    avgTime30s: 30_000, avgTime1m: 60_000, avgTime2m: 120_000,
+    avgTime5m: 300_000, avgTime10m: 600_000, avgTime15m: 900_000, avgTime30m: 1_800_000,
+  };
   for (const [id, ms] of Object.entries(ids)) {
     const el = document.getElementById(id);
     if (el) el.textContent = fmtSec(windowAvg(ms));
@@ -1460,8 +1463,9 @@ function renderTimingChart() {
   }
   wrap.style.display = '';
 
-  const W = 180, H = 70;
-  const PL = 6, PR = 6, PT = 8, PB = 8;
+  // Use a wide coordinate space; SVG is displayed at 100% width via CSS.
+  const W = 1000, H = 60;
+  const PL = 0, PR = 0, PT = 8, PB = 4;
   const cW = W - PL - PR, cH = H - PT - PB;
 
   // Rolling 5-point average for the line
@@ -1471,7 +1475,7 @@ function renderTimingChart() {
     return slice.reduce((s, e) => s + e.sec, 0) / slice.length;
   });
 
-  const n   = smooth.length;
+  const n    = smooth.length;
   const minY = Math.min(...smooth, ...timingEntries.map(e => e.sec));
   const maxY = Math.max(...smooth, ...timingEntries.map(e => e.sec));
   const rY   = Math.max(maxY - minY, 0.5);
@@ -1480,7 +1484,7 @@ function renderTimingChart() {
   const py = v  => (PT + (1 - (v - minY) / rY) * cH).toFixed(2);
 
   // Trend: last third vs first third
-  const t = Math.max(1, Math.floor(n / 3));
+  const t     = Math.max(1, Math.floor(n / 3));
   const early = smooth.slice(0, t).reduce((s, v) => s + v, 0) / t;
   const late  = smooth.slice(-t).reduce((s, v) => s + v, 0) / t;
   const diff  = (late - early) / early;
@@ -1499,31 +1503,31 @@ function renderTimingChart() {
   const fillPath = linePath
     + ` L ${px(n - 1)} ${(PT + cH).toFixed(2)} L ${PL} ${(PT + cH).toFixed(2)} Z`;
 
-  // Raw dots
+  // Raw dots (small, semi-transparent)
   const dots = timingEntries.map((e, i) =>
-    `<circle cx="${px(i)}" cy="${py(e.sec)}" r="1.8" fill="${col}" opacity="0.3"/>`
+    `<circle cx="${px(i)}" cy="${py(e.sec)}" r="3" fill="${col}" opacity="0.25" vector-effect="non-scaling-stroke"/>`
   ).join('');
 
   const windows = [
-    ['1m', windowAvg(60_000)], ['5m', windowAvg(300_000)], ['10m', windowAvg(600_000)],
-    ['30m', windowAvg(1_800_000)], ['All', windowAvg(null)],
+    ['30s', windowAvg(30_000)], ['1m', windowAvg(60_000)], ['2m', windowAvg(120_000)],
+    ['5m', windowAvg(300_000)], ['10m', windowAvg(600_000)], ['15m', windowAvg(900_000)],
+    ['30m', windowAvg(1_800_000)],
   ].map(([lbl, v]) =>
     `<span class="cw-item"><span class="cw-val">${fmtSec(v)}</span><span class="cw-lbl">${lbl}</span></span>`
   ).join('');
 
-  wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+  wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none">
   <defs>
     <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${col}" stop-opacity="0.18"/>
+      <stop offset="0%" stop-color="${col}" stop-opacity="0.15"/>
       <stop offset="100%" stop-color="${col}" stop-opacity="0"/>
     </linearGradient>
   </defs>
   ${dots}
   <path d="${fillPath}" fill="url(#chartGrad)"/>
-  <path d="${linePath}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="${linePath}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
 </svg>
-<div class="chart-windows">${windows}</div>
-<div class="chart-count">${n} responses</div>`;
+<div class="chart-windows">${windows}</div>`;
 }
 
 function clearTiming() {
@@ -1697,7 +1701,7 @@ function setPlaying(val) {
   playIcon.style.display  = val ? 'none' : '';
   pauseIcon.style.display = val ? '' : 'none';
   if (val) { ensureBeepCtx(); startTimer(); }
-  else     { stopTimer(); }
+  else     { stopTimer(); cancelAutoAdvance(); }
 }
 
 // ─── HISTORY ───────────────────────────────────────────────────────────────
