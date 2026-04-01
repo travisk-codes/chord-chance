@@ -164,7 +164,7 @@ const cardTimings      = {}; // { ["root+acc|chordVal|inv"]: [{ts, sec}] }
 // Session clock — tracks total elapsed wall time since page load
 const SESSION_START_WALL = Date.now();
 let sessionPausedMs = 0;       // total ms spent paused so far
-let sessionPauseStart = null;  // wall-clock ms when current pause began
+let sessionPauseStart = Date.now(); // app starts paused; setPlaying(true) clears this
 
 const CHART_WINDOWS = [
   { key: '30s', ms: 30_000 }, { key: '1m', ms: 60_000 }, { key: '2m', ms: 120_000 },

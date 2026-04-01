@@ -98,6 +98,12 @@ header {
   z-index: 10;
 }
 
+.logo-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 .logo {
   font-family: 'Syne', sans-serif;
   font-weight: 700;
@@ -120,13 +126,12 @@ header {
 }
 
 .session-status {
-  font-size: 10px;
+  font-size: 9px;
   font-variant-numeric: tabular-nums;
   color: var(--green);
   opacity: 0.75;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   font-weight: 600;
-  min-width: 52px;
 }
 .session-status.status-paused {
   color: var(--text-dim);
