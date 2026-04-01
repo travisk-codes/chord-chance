@@ -1369,6 +1369,7 @@ function setFeedbackState(s, detectedNote, customMsg) {
     state.cardShownAt = null;
     updateAvgTimeUI();
     renderTimingChart();
+    renderChordRanking();
     saveStats();
   }
 
@@ -1577,12 +1578,38 @@ function renderTimingChart() {
 <div class="chart-windows">${windows}</div>`;
 }
 
+function renderChordRanking() {
+  const el = document.getElementById('chordRanking');
+  if (!el) return;
+  if (state.mode !== 'chord') { el.style.display = 'none'; return; }
+
+  const ranked = CHORD_TYPES
+    .filter(ct => chordTypeTimings[ct.val]?.length)
+    .map(ct => {
+      const vals = chordTypeTimings[ct.val].map(e => e.sec);
+      return { ct, avg: vals.reduce((s, v) => s + v, 0) / vals.length };
+    })
+    .sort((a, b) => a.avg - b.avg);
+
+  if (!ranked.length) { el.style.display = 'none'; return; }
+  el.style.display = '';
+
+  el.innerHTML = ranked.map(({ ct, avg }, i) =>
+    `<div class="cr-row${ct.val === state.current.chord ? ' cr-current' : ''}">` +
+    `<span class="cr-rank">${i + 1}</span>` +
+    `<span class="cr-name">${ct.symbol}</span>` +
+    `<span class="cr-time">${avg.toFixed(1)}s</span>` +
+    `</div>`
+  ).join('');
+}
+
 function clearTiming() {
   timingEntries.length = 0;
   Object.keys(chordTypeTimings).forEach(k => delete chordTypeTimings[k]);
   Object.keys(noteTimings).forEach(k => delete noteTimings[k]);
   updateAvgTimeUI();
   renderTimingChart();
+  renderChordRanking();
   saveStats();
 }
 
@@ -1680,6 +1707,7 @@ function renderDisplay(item, animate = true) {
   } else {
     if (state.midiActive && heldMidiNotes.size > 0) evaluateMidi();
   }
+  renderChordRanking();
   updateGlowPosition();
 }
 
@@ -1702,6 +1730,7 @@ function updateModeUI() {
     if (pianoDisplay && state.mode !== 'chord') pianoDisplay.style.opacity = '0';
     if (invDisplay && state.mode !== 'chord') invDisplay.textContent = '';
   }
+  renderChordRanking();
 }
 
 // ─── TIMER ─────────────────────────────────────────────────────────────────
@@ -1850,6 +1879,7 @@ loadStats();
   updateTimerUI();
   updateAvgTimeUI();
   renderTimingChart();
+  renderChordRanking();
   updateGlowPosition();
 })();
 

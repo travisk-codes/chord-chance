@@ -719,6 +719,58 @@ header {
   color: var(--text-dim);
 }
 
+/* ── CHORD SPEED RANKING (fixed right side) ── */
+.chord-ranking {
+  position: fixed;
+  right: 8px;
+  top: calc(50% - 60px); /* offset for body padding-bottom pushing content up */
+  transform: translateY(-50%);
+  z-index: 1;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0px;
+  max-height: 65vh;
+  overflow: hidden;
+  opacity: 0.72;
+}
+.cr-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+.cr-row.cr-current {
+  background: rgba(201,168,76,0.1);
+}
+.cr-rank {
+  font-family: 'Syne', sans-serif;
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--text-dim);
+  width: 10px;
+  text-align: right;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.cr-name {
+  font-family: 'Syne', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  min-width: 26px;
+}
+.cr-row.cr-current .cr-name { color: var(--gold); }
+.cr-time {
+  font-family: 'Syne', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text);
+}
+.cr-row.cr-current .cr-time { color: var(--gold); }
+
 /* Reset / Clear button */
 .reset-btn {
   width: 100%;
