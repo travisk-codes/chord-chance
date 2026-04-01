@@ -1446,7 +1446,14 @@ function windowAvg(ms) {
   return entries.length ? entries.reduce((s, e) => s + e.sec, 0) / entries.length : null;
 }
 
+function windowStd(ms) {
+  const entries = ms !== null ? timingEntries.filter(e => e.ts >= Date.now() - ms) : timingEntries;
+  if (entries.length < 2) return null;
+  return stdDev(entries.map(e => e.sec));
+}
+
 function fmtSec(v) { return v !== null ? v.toFixed(1) + 's' : '—'; }
+function fmtStd(v) { return v ? '±' + v.toFixed(1) + 's' : ''; }
 
 function stdDev(vals) {
   if (vals.length < 2) return 0;
@@ -1469,13 +1476,20 @@ function updateAvgTimeUI() {
   if (!row) return;
   row.style.display = state.showAvgTime ? '' : 'none';
   if (!state.showAvgTime) return;
-  const ids = {
-    avgTime30s: 30_000, avgTime1m: 60_000, avgTime2m: 120_000,
-    avgTime5m: 300_000, avgTime10m: 600_000, avgTime15m: 900_000, avgTime30m: 1_800_000,
-  };
-  for (const [id, ms] of Object.entries(ids)) {
+  const windows = [
+    { id: 'avgTime30s',  stdId: 'avgTimeStd30s',  ms: 30_000 },
+    { id: 'avgTime1m',   stdId: 'avgTimeStd1m',   ms: 60_000 },
+    { id: 'avgTime2m',   stdId: 'avgTimeStd2m',   ms: 120_000 },
+    { id: 'avgTime5m',   stdId: 'avgTimeStd5m',   ms: 300_000 },
+    { id: 'avgTime10m',  stdId: 'avgTimeStd10m',  ms: 600_000 },
+    { id: 'avgTime15m',  stdId: 'avgTimeStd15m',  ms: 900_000 },
+    { id: 'avgTime30m',  stdId: 'avgTimeStd30m',  ms: 1_800_000 },
+  ];
+  for (const { id, stdId, ms } of windows) {
     const el = document.getElementById(id);
     if (el) el.textContent = fmtSec(windowAvg(ms));
+    const stdEl = document.getElementById(stdId);
+    if (stdEl) stdEl.textContent = fmtStd(windowStd(ms));
   }
 }
 
@@ -1540,11 +1554,13 @@ function renderTimingChart() {
   ).join('');
 
   // Window selector labels — active one is highlighted
-  const windows = CHART_WINDOWS.map(({ key, ms }) =>
-    `<span class="cw-item${key === chartWindowKey ? ' active' : ''}" data-cw-key="${key}">` +
-    `<span class="cw-val">${fmtSec(windowAvg(ms))}</span>` +
-    `<span class="cw-lbl">${key}</span></span>`
-  ).join('');
+  const windows = CHART_WINDOWS.map(({ key, ms }) => {
+    const avg = windowAvg(ms), std = windowStd(ms);
+    return `<span class="cw-item${key === chartWindowKey ? ' active' : ''}" data-cw-key="${key}">` +
+      `<span class="cw-val">${fmtSec(avg)}</span>` +
+      (std ? `<span class="cw-std">${fmtStd(std)}</span>` : '') +
+      `<span class="cw-lbl">${key}</span></span>`;
+  }).join('');
 
   wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none">
   <defs>
