@@ -144,6 +144,7 @@ const state = {
   showAvgTime: false,
   cardShownAt: null,
   pausedAt: null,      // set while session is paused; used to exclude pause time from response timing
+  pausedWallClock: null, // Date.now() snapshot taken at pause — freezes window avg reference
   twoHandMode: false,
   showMidiNotes: true,
 };
@@ -159,6 +160,11 @@ const MAX_KEY_TIMINGS = 30; // per chord-type or note key
 const chordTypeTimings = {}; // { [chordVal]: [{ts, sec}] }
 const noteTimings      = {}; // { [noteKey]:  [{ts, sec}] }
 const cardTimings      = {}; // { ["root+acc|chordVal|inv"]: [{ts, sec}] }
+
+// Session clock — tracks total elapsed wall time since page load
+const SESSION_START_WALL = Date.now();
+let sessionPausedMs = 0;       // total ms spent paused so far
+let sessionPauseStart = null;  // wall-clock ms when current pause began
 
 const CHART_WINDOWS = [
   { key: '30s', ms: 30_000 }, { key: '1m', ms: 60_000 }, { key: '2m', ms: 120_000 },
@@ -1450,12 +1456,14 @@ function updateStatsUI() {
 }
 
 function windowAvg(ms) {
-  const entries = ms !== null ? timingEntries.filter(e => e.ts >= Date.now() - ms) : timingEntries;
+  const ref = state.pausedWallClock ?? Date.now();
+  const entries = ms !== null ? timingEntries.filter(e => e.ts >= ref - ms) : timingEntries;
   return entries.length ? entries.reduce((s, e) => s + e.sec, 0) / entries.length : null;
 }
 
 function windowStd(ms) {
-  const entries = ms !== null ? timingEntries.filter(e => e.ts >= Date.now() - ms) : timingEntries;
+  const ref = state.pausedWallClock ?? Date.now();
+  const entries = ms !== null ? timingEntries.filter(e => e.ts >= ref - ms) : timingEntries;
   if (entries.length < 2) return null;
   return stdDev(entries.map(e => e.sec));
 }
@@ -1500,6 +1508,26 @@ function updateAvgTimeUI() {
     if (stdEl) stdEl.textContent = fmtStd(windowStd(ms));
   }
 }
+
+function fmtSessionTime(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}:${String(m % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function updateSessionStatusUI() {
+  const el = document.getElementById('sessionStatus');
+  if (!el) return;
+  const pausedNow = sessionPauseStart !== null ? Date.now() - sessionPauseStart : 0;
+  const activeMs  = Date.now() - SESSION_START_WALL - sessionPausedMs - pausedNow;
+  const label     = state.playing ? '▶' : '⏸';
+  el.textContent  = `${label} ${fmtSessionTime(Math.max(0, activeMs))}`;
+  el.classList.toggle('status-paused', !state.playing);
+}
+setInterval(updateSessionStatusUI, 1000);
+
 
 function renderTimingChart() {
   const wrap = document.getElementById('timingChartWrap');
@@ -1824,13 +1852,21 @@ function setPlaying(val) {
     if (state.pausedAt !== null && state.cardShownAt !== null) {
       state.cardShownAt += performance.now() - state.pausedAt;
     }
+    if (sessionPauseStart !== null) {
+      sessionPausedMs += Date.now() - sessionPauseStart;
+      sessionPauseStart = null;
+    }
     state.pausedAt = null;
+    state.pausedWallClock = null;
     startTimer();
   } else {
     stopTimer();
     cancelAutoAdvance();
     state.pausedAt = performance.now();
+    state.pausedWallClock = Date.now();
+    sessionPauseStart = Date.now();
   }
+  updateSessionStatusUI();
 }
 
 // ─── HISTORY ───────────────────────────────────────────────────────────────
@@ -1919,6 +1955,7 @@ loadStats();
   updateAvgTimeUI();
   renderTimingChart();
   renderChordRanking();
+  updateSessionStatusUI();
   updateGlowPosition();
 })();
 

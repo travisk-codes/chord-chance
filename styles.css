@@ -119,6 +119,19 @@ header {
   text-transform: uppercase;
 }
 
+.session-status {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--green);
+  opacity: 0.75;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  min-width: 52px;
+}
+.session-status.status-paused {
+  color: var(--text-dim);
+}
+
 .header-right {
   display: flex;
   align-items: center;
