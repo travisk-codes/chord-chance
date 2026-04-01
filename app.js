@@ -158,6 +158,13 @@ const MAX_KEY_TIMINGS = 30; // per chord-type or note key
 const chordTypeTimings = {}; // { [chordVal]: [{ts, sec}] }
 const noteTimings      = {}; // { [noteKey]:  [{ts, sec}] }
 
+const CHART_WINDOWS = [
+  { key: '30s', ms: 30_000 }, { key: '1m', ms: 60_000 }, { key: '2m', ms: 120_000 },
+  { key: '5m',  ms: 300_000 }, { key: '10m', ms: 600_000 }, { key: '15m', ms: 900_000 },
+  { key: '30m', ms: 1_800_000 },
+];
+let chartWindowKey = '5m'; // which window the smoothed line represents
+
 const noteWeights = {};
 const chordWeights = {};
 const noteStats = {};
@@ -1439,6 +1446,22 @@ function windowAvg(ms) {
 
 function fmtSec(v) { return v !== null ? v.toFixed(1) + 's' : '—'; }
 
+function stdDev(vals) {
+  if (vals.length < 2) return 0;
+  const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
+  return Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length);
+}
+
+// For each entry, compute the avg and std of all entries within windowMs before it.
+function computeSmoothed(entries, windowMs) {
+  return entries.map(e => {
+    const slice = entries.filter(x => x.ts >= e.ts - windowMs && x.ts <= e.ts);
+    const vals  = slice.map(x => x.sec);
+    const avg   = vals.reduce((s, v) => s + v, 0) / vals.length;
+    return { avg, std: stdDev(vals) };
+  });
+}
+
 function updateAvgTimeUI() {
   const row = document.getElementById('avgTimeRow');
   if (!row) return;
@@ -1468,16 +1491,16 @@ function renderTimingChart() {
   const PL = 0, PR = 0, PT = 8, PB = 4;
   const cW = W - PL - PR, cH = H - PT - PB;
 
-  // Rolling 5-point average for the line
-  const ROLL = 5;
-  const smooth = timingEntries.map((_, i) => {
-    const slice = timingEntries.slice(Math.max(0, i - ROLL + 1), i + 1);
-    return slice.reduce((s, e) => s + e.sec, 0) / slice.length;
-  });
+  // Compute smoothed line + variance using the selected time window
+  const winMs    = CHART_WINDOWS.find(w => w.key === chartWindowKey)?.ms ?? 300_000;
+  const smoothed = computeSmoothed(timingEntries, winMs);
+  const smooth   = smoothed.map(s => s.avg);
+  const stds     = smoothed.map(s => s.std);
 
   const n    = smooth.length;
-  const minY = Math.min(...smooth, ...timingEntries.map(e => e.sec));
-  const maxY = Math.max(...smooth, ...timingEntries.map(e => e.sec));
+  // Y-range must accommodate raw dots and the full variance band
+  const minY = Math.min(...smooth.map((v, i) => v - stds[i]), ...timingEntries.map(e => e.sec));
+  const maxY = Math.max(...smooth.map((v, i) => v + stds[i]), ...timingEntries.map(e => e.sec));
   const rY   = Math.max(maxY - minY, 0.5);
 
   const px = i => (PL + (i / Math.max(n - 1, 1)) * cW).toFixed(2);
@@ -1490,7 +1513,7 @@ function renderTimingChart() {
   const diff  = (late - early) / early;
   const col   = diff < -0.07 ? 'var(--green)' : diff > 0.07 ? 'var(--red)' : 'var(--gold)';
 
-  // Smooth line using cubic bezier between each pair of points
+  // Smooth avg line (cubic bezier)
   let linePath = `M ${px(0)} ${py(smooth[0])}`;
   for (let i = 1; i < n; i++) {
     const x0 = parseFloat(px(i - 1)), y0 = parseFloat(py(smooth[i - 1]));
@@ -1499,31 +1522,37 @@ function renderTimingChart() {
     linePath += ` C ${cx} ${y0.toFixed(2)} ${cx} ${y1.toFixed(2)} ${x1.toFixed(2)} ${y1.toFixed(2)}`;
   }
 
-  // Fill under the line
+  // Fill under the avg line
   const fillPath = linePath
     + ` L ${px(n - 1)} ${(PT + cH).toFixed(2)} L ${PL} ${(PT + cH).toFixed(2)} Z`;
 
-  // Raw dots (small, semi-transparent)
+  // Variance band: avg±std, closed polygon (straight edges for clarity)
+  let bandPath = `M ${px(0)} ${py(smooth[0] - stds[0])}`;
+  for (let i = 1; i < n; i++) bandPath += ` L ${px(i)} ${py(smooth[i] - stds[i])}`;
+  for (let i = n - 1; i >= 0; i--) bandPath += ` L ${px(i)} ${py(smooth[i] + stds[i])}`;
+  bandPath += ' Z';
+
+  // Raw dots
   const dots = timingEntries.map((e, i) =>
-    `<circle cx="${px(i)}" cy="${py(e.sec)}" r="3" fill="${col}" opacity="0.25" vector-effect="non-scaling-stroke"/>`
+    `<circle cx="${px(i)}" cy="${py(e.sec)}" r="3" fill="${col}" opacity="0.22" vector-effect="non-scaling-stroke"/>`
   ).join('');
 
-  const windows = [
-    ['30s', windowAvg(30_000)], ['1m', windowAvg(60_000)], ['2m', windowAvg(120_000)],
-    ['5m', windowAvg(300_000)], ['10m', windowAvg(600_000)], ['15m', windowAvg(900_000)],
-    ['30m', windowAvg(1_800_000)],
-  ].map(([lbl, v]) =>
-    `<span class="cw-item"><span class="cw-val">${fmtSec(v)}</span><span class="cw-lbl">${lbl}</span></span>`
+  // Window selector labels — active one is highlighted
+  const windows = CHART_WINDOWS.map(({ key, ms }) =>
+    `<span class="cw-item${key === chartWindowKey ? ' active' : ''}" data-cw-key="${key}">` +
+    `<span class="cw-val">${fmtSec(windowAvg(ms))}</span>` +
+    `<span class="cw-lbl">${key}</span></span>`
   ).join('');
 
   wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none">
   <defs>
     <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${col}" stop-opacity="0.15"/>
+      <stop offset="0%" stop-color="${col}" stop-opacity="0.13"/>
       <stop offset="100%" stop-color="${col}" stop-opacity="0"/>
     </linearGradient>
   </defs>
   ${dots}
+  <path d="${bandPath}" fill="${col}" opacity="0.12" vector-effect="non-scaling-stroke"/>
   <path d="${fillPath}" fill="url(#chartGrad)"/>
   <path d="${linePath}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
 </svg>
@@ -2166,6 +2195,15 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   [notesWarn, accWarn, chordsWarn].forEach(w => w.classList.remove('visible'));
   if (state.playing) startTimer();
   saveSettings();
+});
+
+// ─── TIMING CHART WINDOW SELECTOR ──────────────────────────────────────────
+
+document.addEventListener('click', e => {
+  const item = e.target.closest('[data-cw-key]');
+  if (!item) return;
+  chartWindowKey = item.dataset.cwKey;
+  renderTimingChart();
 });
 
 // ─── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────

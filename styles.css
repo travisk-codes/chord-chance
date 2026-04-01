@@ -673,6 +673,7 @@ header {
   display: flex;
   justify-content: space-around;
   padding: 3px 8px calc(28px + env(safe-area-inset-bottom, 0px));
+  pointer-events: auto; /* re-enable so window labels are clickable */
 }
 .cw-item {
   display: flex;
@@ -680,7 +681,13 @@ header {
   align-items: center;
   gap: 1px;
   flex: 1;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.15s;
 }
+.cw-item:hover  { opacity: 0.75; }
+.cw-item.active { opacity: 1; }
+.cw-item.active .cw-lbl { color: var(--text); }
 .cw-val {
   font-family: 'Syne', sans-serif;
   font-size: 11px;
@@ -695,16 +702,6 @@ header {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-dim);
-}
-.chart-count {
-  font-family: 'Syne', sans-serif;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  text-align: center;
-  margin-top: 3px;
 }
 
 /* Reset / Clear button */
