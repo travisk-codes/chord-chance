@@ -158,6 +158,7 @@ const MAX_TIMING = 300;
 const MAX_KEY_TIMINGS = 30; // per chord-type or note key
 const chordTypeTimings = {}; // { [chordVal]: [{ts, sec}] }
 const noteTimings      = {}; // { [noteKey]:  [{ts, sec}] }
+const cardTimings      = {}; // { ["root+acc|chordVal|inv"]: [{ts, sec}] }
 
 const CHART_WINDOWS = [
   { key: '30s', ms: 30_000 }, { key: '1m', ms: 60_000 }, { key: '2m', ms: 120_000 },
@@ -177,7 +178,7 @@ function saveStats() {
       correct: stats.correct, wrong: stats.wrong, bestStreak: stats.bestStreak,
       noteStats, chordStats, noteWeights, chordWeights,
       timingEntries: timingEntries.slice(-MAX_TIMING),
-      chordTypeTimings, noteTimings,
+      chordTypeTimings, noteTimings, cardTimings,
     }));
   } catch(e) {}
 }
@@ -196,6 +197,7 @@ function loadStats() {
     if (Array.isArray(s.timingEntries)) timingEntries.push(...s.timingEntries.slice(-MAX_TIMING));
     if (s.chordTypeTimings && typeof s.chordTypeTimings === 'object') Object.assign(chordTypeTimings, s.chordTypeTimings);
     if (s.noteTimings      && typeof s.noteTimings      === 'object') Object.assign(noteTimings,      s.noteTimings);
+    if (s.cardTimings      && typeof s.cardTimings      === 'object') Object.assign(cardTimings,      s.cardTimings);
   } catch(e) {}
 }
 
@@ -1366,6 +1368,11 @@ function setFeedbackState(s, detectedNote, customMsg) {
     // Per-note-key timing
     const noteKey = state.current.root + state.current.acc;
     pushKeyTiming(noteKey, noteTimings, entry);
+    // Per-full-card timing (root+acc|chordVal|inversion)
+    if (state.mode === 'chord' && chordKey) {
+      const ck = `${state.current.root}${state.current.acc}|${chordKey}|${state.currentInversion}`;
+      pushKeyTiming(ck, cardTimings, entry);
+    }
     state.cardShownAt = null;
     updateAvgTimeUI();
     renderTimingChart();
@@ -1581,23 +1588,54 @@ function renderTimingChart() {
 function renderChordRanking() {
   const el = document.getElementById('chordRanking');
   if (!el) return;
-  if (state.mode !== 'chord') { el.style.display = 'none'; return; }
+  if (state.mode === 'ear') { el.style.display = 'none'; return; }
 
-  const ranked = CHORD_TYPES
-    .filter(ct => chordTypeTimings[ct.val]?.length)
-    .map(ct => {
-      const vals = chordTypeTimings[ct.val].map(e => e.sec);
-      return { ct, avg: vals.reduce((s, v) => s + v, 0) / vals.length };
+  if (state.mode === 'note') {
+    // Note mode: rank by note name
+    const ranked = Object.entries(noteTimings)
+      .filter(([, entries]) => entries.length)
+      .map(([key, entries]) => {
+        const avg = entries.reduce((s, e) => s + e.sec, 0) / entries.length;
+        const display = key.replace('#', '♯').replace('b', '♭');
+        return { key, display, avg };
+      })
+      .sort((a, b) => a.avg - b.avg);
+    if (!ranked.length) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    const curKey = state.current.root + state.current.acc;
+    el.innerHTML = ranked.map(({ key, display, avg }, i) =>
+      `<div class="cr-row${key === curKey ? ' cr-current' : ''}">` +
+      `<span class="cr-rank">${i + 1}</span>` +
+      `<span class="cr-name">${display}</span>` +
+      `<span class="cr-time">${avg.toFixed(1)}s</span>` +
+      `</div>`
+    ).join('');
+    return;
+  }
+
+  // Chord mode: rank by full card (root+acc|chordVal|inversion)
+  const ranked = Object.entries(cardTimings)
+    .filter(([, entries]) => entries.length)
+    .map(([key, entries]) => {
+      const avg = entries.reduce((s, e) => s + e.sec, 0) / entries.length;
+      const [rootAcc, chordVal, invStr] = key.split('|');
+      const ct = CHORD_TYPES.find(c => c.val === chordVal);
+      const inv = parseInt(invStr, 10);
+      const rootDisplay = rootAcc.replace('#', '♯').replace('b', '♭');
+      const invSuffix = inv > 0 ? ` ${inv}` : '';
+      const display = `${rootDisplay} ${ct ? ct.symbol : chordVal}${invSuffix}`;
+      return { key, display, avg };
     })
     .sort((a, b) => a.avg - b.avg);
 
   if (!ranked.length) { el.style.display = 'none'; return; }
   el.style.display = '';
 
-  el.innerHTML = ranked.map(({ ct, avg }, i) =>
-    `<div class="cr-row${ct.val === state.current.chord ? ' cr-current' : ''}">` +
+  const curKey = `${state.current.root}${state.current.acc}|${state.current.chord}|${state.currentInversion}`;
+  el.innerHTML = ranked.map(({ key, display, avg }, i) =>
+    `<div class="cr-row${key === curKey ? ' cr-current' : ''}">` +
     `<span class="cr-rank">${i + 1}</span>` +
-    `<span class="cr-name">${ct.symbol}</span>` +
+    `<span class="cr-name">${display}</span>` +
     `<span class="cr-time">${avg.toFixed(1)}s</span>` +
     `</div>`
   ).join('');
@@ -1607,6 +1645,7 @@ function clearTiming() {
   timingEntries.length = 0;
   Object.keys(chordTypeTimings).forEach(k => delete chordTypeTimings[k]);
   Object.keys(noteTimings).forEach(k => delete noteTimings[k]);
+  Object.keys(cardTimings).forEach(k => delete cardTimings[k]);
   updateAvgTimeUI();
   renderTimingChart();
   renderChordRanking();
