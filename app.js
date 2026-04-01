@@ -143,6 +143,7 @@ const state = {
   untimedMode: false,
   showAvgTime: false,
   cardShownAt: null,
+  pausedAt: null,      // set while session is paused; used to exclude pause time from response timing
   twoHandMode: false,
   showMidiNotes: true,
 };
@@ -1352,9 +1353,10 @@ function setFeedbackState(s, detectedNote, customMsg) {
     s === 'correct' ? 'var(--green)' :
     s === 'wrong'   ? 'var(--red)'   : 'var(--text-dim)';
 
-  // Record response time on correct transition
+  // Record response time on correct transition (exclude any time currently paused)
   if (s === 'correct' && prev !== 'correct' && anyInputActive() && state.cardShownAt !== null) {
-    const elapsed = (performance.now() - state.cardShownAt) / 1000;
+    const pausedSoFar = state.pausedAt !== null ? performance.now() - state.pausedAt : 0;
+    const elapsed = (performance.now() - state.cardShownAt - pausedSoFar) / 1000;
     const entry = { ts: Date.now(), sec: elapsed };
     timingEntries.push(entry);
     if (timingEntries.length > MAX_TIMING) timingEntries.shift();
@@ -1609,6 +1611,9 @@ function renderDisplay(item, animate = true) {
   if (earHintTimer) { clearTimeout(earHintTimer); earHintTimer = null; }
   state.current = item;
   state.cardShownAt = performance.now();
+  // If a new card arrives while paused, reset the pause reference so only
+  // time paused after this card's appearance gets excluded.
+  if (state.pausedAt !== null) state.pausedAt = performance.now();
   const _ct = item.chord ? CHORD_TYPES.find(c => c.val === item.chord) : null;
   dbg(`new card — ${item.root + item.acc} ${_ct ? _ct.label : '(note)'} inv:${state.currentInversion} ${state.twoHandMode ? '[two-hand]' : ''}`);
 
@@ -1729,8 +1734,19 @@ function setPlaying(val) {
   state.playing = val;
   playIcon.style.display  = val ? 'none' : '';
   pauseIcon.style.display = val ? '' : 'none';
-  if (val) { ensureBeepCtx(); startTimer(); }
-  else     { stopTimer(); cancelAutoAdvance(); }
+  if (val) {
+    ensureBeepCtx();
+    // Shift cardShownAt forward by the paused duration so pause time is excluded
+    if (state.pausedAt !== null && state.cardShownAt !== null) {
+      state.cardShownAt += performance.now() - state.pausedAt;
+    }
+    state.pausedAt = null;
+    startTimer();
+  } else {
+    stopTimer();
+    cancelAutoAdvance();
+    state.pausedAt = performance.now();
+  }
 }
 
 // ─── HISTORY ───────────────────────────────────────────────────────────────
