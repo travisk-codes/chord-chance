@@ -161,10 +161,22 @@ const chordTypeTimings = {}; // { [chordVal]: [{ts, sec}] }
 const noteTimings      = {}; // { [noteKey]:  [{ts, sec}] }
 const cardTimings      = {}; // { ["root+acc|chordVal|inv"]: [{ts, sec}] }
 
+// Personal bests & milestones
+const pBests = { fastestSec: Infinity, longestStreak: 0 };
+const milestonesHit = new Set(); // keys like "c100", "s20" — each fires only once
+
 // Session clock — tracks total elapsed wall time since page load
 const SESSION_START_WALL = Date.now();
 let sessionPausedMs = 0;       // total ms spent paused so far
 let sessionPauseStart = Date.now(); // app starts paused; setPlaying(true) clears this
+let allTimePracticeMs = 0;     // persisted total practice ms from all previous sessions
+
+// Semitone aliases for note heatmap (index = semitone 0–11)
+const SEMITONE_ALIASES = [
+  ['C'], ['C#','Db'], ['D'], ['D#','Eb'], ['E'],
+  ['F'], ['F#','Gb'], ['G'], ['G#','Ab'], ['A'], ['A#','Bb'], ['B'],
+];
+const SEMITONE_DISPLAY = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
 
 const CHART_WINDOWS = [
   { key: '30s', ms: 30_000 }, { key: '1m', ms: 60_000 }, { key: '2m', ms: 120_000 },
@@ -178,6 +190,11 @@ const chordWeights = {};
 const noteStats = {};
 const chordStats = {};
 
+function getCurrentSessionActiveMs() {
+  const pausedNow = sessionPauseStart !== null ? Date.now() - sessionPauseStart : 0;
+  return Math.max(0, Date.now() - SESSION_START_WALL - sessionPausedMs - pausedNow);
+}
+
 function saveStats() {
   try {
     localStorage.setItem('cc2_stats', JSON.stringify({
@@ -185,6 +202,9 @@ function saveStats() {
       noteStats, chordStats, noteWeights, chordWeights,
       timingEntries: timingEntries.slice(-MAX_TIMING),
       chordTypeTimings, noteTimings, cardTimings,
+      pBests: { fastestSec: pBests.fastestSec === Infinity ? null : pBests.fastestSec, longestStreak: pBests.longestStreak },
+      milestonesHit: [...milestonesHit],
+      allTimePracticeMs: allTimePracticeMs + getCurrentSessionActiveMs(),
     }));
   } catch(e) {}
 }
@@ -204,6 +224,12 @@ function loadStats() {
     if (s.chordTypeTimings && typeof s.chordTypeTimings === 'object') Object.assign(chordTypeTimings, s.chordTypeTimings);
     if (s.noteTimings      && typeof s.noteTimings      === 'object') Object.assign(noteTimings,      s.noteTimings);
     if (s.cardTimings      && typeof s.cardTimings      === 'object') Object.assign(cardTimings,      s.cardTimings);
+    if (s.pBests) {
+      pBests.fastestSec    = s.pBests.fastestSec != null ? s.pBests.fastestSec : Infinity;
+      pBests.longestStreak = s.pBests.longestStreak ?? 0;
+    }
+    if (Array.isArray(s.milestonesHit)) s.milestonesHit.forEach(k => milestonesHit.add(k));
+    if (typeof s.allTimePracticeMs === 'number') allTimePracticeMs = s.allTimePracticeMs;
   } catch(e) {}
 }
 
@@ -1266,38 +1292,123 @@ function handleEarChoice(isCorrect, clickedBtn, allBtns, item) {
 function openSummary() {
   if (!summaryPanel) return;
   const total = stats.correct + stats.wrong;
+  const accuracy = total > 0 ? Math.round(stats.correct / total * 100) : null;
+
+  // ── Overall ────────────────────────────────────────────────────────────────
   let html = `
     <div class="summary-overall">
       <div class="stat-row"><span>Correct</span><strong>${stats.correct}</strong></div>
       <div class="stat-row"><span>Wrong</span><strong>${stats.wrong}</strong></div>
-      <div class="stat-row"><span>Accuracy</span><strong>${total > 0 ? Math.round(stats.correct/total*100)+'%' : '—'}</strong></div>
+      <div class="stat-row"><span>Accuracy</span><strong>${accuracy != null ? accuracy + '%' : '—'}</strong></div>
       <div class="stat-row"><span>Best streak</span><strong>${stats.bestStreak}</strong></div>
     </div>`;
 
+  // ── Personal Bests ─────────────────────────────────────────────────────────
+  const totalPractice = allTimePracticeMs + getCurrentSessionActiveMs();
+  const recentMs = 5 * 60 * 1000;
+  const recentRef = state.pausedWallClock ?? Date.now();
+  const recentEntries = timingEntries.filter(e => e.ts >= recentRef - recentMs);
+  const cardsPerMin = recentEntries.length > 0
+    ? (recentEntries.length / (recentMs / 60000)).toFixed(1)
+    : null;
+
+  const allAvg = windowAvg(null);
+  const recent2mAvg = windowAvg(2 * 60 * 1000);
+  let trendHtml = '';
+  if (allAvg && recent2mAvg && timingEntries.length >= 5) {
+    const pct = Math.round((allAvg - recent2mAvg) / allAvg * 100);
+    if (pct >= 5)       trendHtml = `<span class="trend-up">↗ ${pct}% faster recently</span>`;
+    else if (pct <= -5) trendHtml = `<span class="trend-down">↘ ${Math.abs(pct)}% slower recently</span>`;
+    else                trendHtml = `<span class="trend-flat">→ Steady pace</span>`;
+  }
+
+  html += `<div class="summary-section-title">Personal Bests</div>
+    <div class="summary-bests">
+      <div class="stat-row"><span>Fastest answer</span><strong>${pBests.fastestSec < Infinity ? pBests.fastestSec.toFixed(2) + 's' : '—'}</strong></div>
+      <div class="stat-row"><span>Best streak</span><strong>${pBests.longestStreak || stats.bestStreak}</strong></div>
+      <div class="stat-row"><span>Total practice</span><strong>${totalPractice > 0 ? fmtDuration(totalPractice) : '—'}</strong></div>
+      ${cardsPerMin ? `<div class="stat-row"><span>Cards / min (5m)</span><strong>${cardsPerMin}</strong></div>` : ''}
+      ${trendHtml ? `<div class="stat-row trend-row">${trendHtml}</div>` : ''}
+    </div>`;
+
+  // ── Response Time Histogram ────────────────────────────────────────────────
+  if (timingEntries.length >= 3) {
+    const BINS = 10;
+    const maxSec = Math.min(15, Math.ceil(Math.max(...timingEntries.map(e => e.sec)) * 1.1));
+    const binW = maxSec / BINS;
+    const counts = Array(BINS).fill(0);
+    timingEntries.forEach(e => {
+      const i = Math.min(BINS - 1, Math.floor(e.sec / binW));
+      counts[i]++;
+    });
+    const peak = Math.max(...counts);
+    html += `<div class="summary-section-title">Response Time Distribution</div>
+      <div class="histogram">`;
+    counts.forEach((c, i) => {
+      const t = i / (BINS - 1);
+      const color = speedColorHex(t);
+      const h = peak > 0 ? Math.round((c / peak) * 100) : 0;
+      const label = (i * binW).toFixed(1) + 's';
+      html += `<div class="hist-bar-wrap" title="${label}–${((i+1)*binW).toFixed(1)}s: ${c}">
+        <div class="hist-bar" style="height:${h}%;background:${color}"></div>
+        ${i % 2 === 0 ? `<div class="hist-lbl">${label}</div>` : '<div class="hist-lbl"></div>'}
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // ── Note Speed Heatmap ─────────────────────────────────────────────────────
+  const semitoneAvgs = SEMITONE_ALIASES.map((_, i) => {
+    const entries = getSemitoneEntries(i);
+    return entries.length ? entries.reduce((s, e) => s + e.sec, 0) / entries.length : null;
+  });
+  const seenAvgs = semitoneAvgs.filter(v => v !== null);
+  if (seenAvgs.length >= 2) {
+    const minA = Math.min(...seenAvgs), maxA = Math.max(...seenAvgs);
+    html += `<div class="summary-section-title">Note Speed Heatmap <span class="heatmap-legend"><span style="color:var(--green)">■ fast</span> → <span style="color:#c94c4c">■ slow</span></span></div>
+      <div class="note-heatmap">`;
+    semitoneAvgs.forEach((avg, i) => {
+      const isBlack = [1,3,6,8,10].includes(i);
+      const color = avg !== null ? speedColorHex((avg - minA) / (maxA - minA || 1)) : 'var(--surface2)';
+      const label = avg !== null ? avg.toFixed(1) + 's' : '—';
+      html += `<div class="heatmap-cell${isBlack ? ' heatmap-black' : ''}" style="background:${color}" title="${SEMITONE_DISPLAY[i]}: ${label}">
+        <span class="heatmap-note">${SEMITONE_DISPLAY[i]}</span>
+        <span class="heatmap-val">${avg !== null ? avg.toFixed(1) : ''}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // ── Notes accuracy table ────────────────────────────────────────────────────
   const noteEntries = Object.entries(noteStats).sort((a,b) => (b[1].w - b[1].c) - (a[1].w - a[1].c));
   if (noteEntries.length) {
     html += `<div class="summary-section-title">Notes</div>
-      <table class="summary-table"><thead><tr><th>Note</th><th>✓</th><th>✗</th><th>Acc</th></tr></thead><tbody>`;
+      <table class="summary-table"><thead><tr><th>Note</th><th>✓</th><th>✗</th><th>Acc</th><th>Avg</th></tr></thead><tbody>`;
     noteEntries.forEach(([key, s]) => {
-      const acc = s.c + s.w > 0 ? Math.round(s.c/(s.c+s.w)*100)+'%' : '—';
-      html += `<tr><td>${key.replace('#','♯').replace('b','♭')}</td><td>${s.c}</td><td>${s.w}</td><td>${acc}</td></tr>`;
+      const acc  = s.c + s.w > 0 ? Math.round(s.c/(s.c+s.w)*100)+'%' : '—';
+      const entries = noteTimings[key] ?? [];
+      const avg  = entries.length ? (entries.reduce((a,e) => a+e.sec, 0)/entries.length).toFixed(1)+'s' : '—';
+      html += `<tr><td>${key.replace('#','♯').replace('b','♭')}</td><td>${s.c}</td><td>${s.w}</td><td>${acc}</td><td>${avg}</td></tr>`;
     });
     html += '</tbody></table>';
   }
 
+  // ── Chords accuracy table ───────────────────────────────────────────────────
   const chordEntries = Object.entries(chordStats).sort((a,b) => (b[1].w - b[1].c) - (a[1].w - a[1].c));
   if (chordEntries.length) {
     html += `<div class="summary-section-title">Chords</div>
-      <table class="summary-table"><thead><tr><th>Chord</th><th>✓</th><th>✗</th><th>Acc</th></tr></thead><tbody>`;
+      <table class="summary-table"><thead><tr><th>Chord</th><th>✓</th><th>✗</th><th>Acc</th><th>Avg</th></tr></thead><tbody>`;
     chordEntries.forEach(([key, s]) => {
-      const label = CHORD_TYPES.find(c => c.val === key)?.label ?? key;
-      const acc = s.c + s.w > 0 ? Math.round(s.c/(s.c+s.w)*100)+'%' : '—';
-      html += `<tr><td>${label}</td><td>${s.c}</td><td>${s.w}</td><td>${acc}</td></tr>`;
+      const label   = CHORD_TYPES.find(c => c.val === key)?.label ?? key;
+      const acc     = s.c + s.w > 0 ? Math.round(s.c/(s.c+s.w)*100)+'%' : '—';
+      const entries = chordTypeTimings[key] ?? [];
+      const avg     = entries.length ? (entries.reduce((a,e) => a+e.sec, 0)/entries.length).toFixed(1)+'s' : '—';
+      html += `<tr><td>${label}</td><td>${s.c}</td><td>${s.w}</td><td>${acc}</td><td>${avg}</td></tr>`;
     });
     html += '</tbody></table>';
   }
 
-  if (!noteEntries.length && !chordEntries.length) {
+  if (!noteEntries.length && !chordEntries.length && !timingEntries.length) {
     html += `<p style="color:var(--text-dim);font-size:13px;margin-top:12px">No data yet — play some cards with an input source active.</p>`;
   }
 
@@ -1380,6 +1491,7 @@ function setFeedbackState(s, detectedNote, customMsg) {
       pushKeyTiming(ck, cardTimings, entry);
     }
     state.cardShownAt = null;
+    checkMilestones(entry);
     updateAvgTimeUI();
     renderTimingChart();
     renderChordRanking();
@@ -1470,6 +1582,85 @@ function windowStd(ms) {
 
 function fmtSec(v) { return v !== null ? v.toFixed(1) + 's' : '—'; }
 function fmtStd(v) { return v ? '±' + v.toFixed(1) + 's' : ''; }
+
+function fmtDuration(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}h ${m % 60}m`;
+  if (m > 0) return `${m}m ${s % 60}s`;
+  return `${s}s`;
+}
+
+// Toast notifications
+function showToast(msg, icon) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = icon ? `<span class="toast-icon">${icon}</span><span>${msg}</span>` : `<span>${msg}</span>`;
+  container.appendChild(el);
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('toast-in')));
+  setTimeout(() => el.classList.remove('toast-in'), 2800);
+  setTimeout(() => el.remove(), 3200);
+}
+
+const CORRECT_MILESTONES = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
+const STREAK_MILESTONES  = [5, 10, 20, 30, 50, 100];
+
+function checkMilestones(entry) {
+  // Correct count milestones
+  for (const n of CORRECT_MILESTONES) {
+    if (stats.correct === n && !milestonesHit.has(`c${n}`)) {
+      milestonesHit.add(`c${n}`);
+      showToast(`${n} correct answers`, '🎯');
+    }
+  }
+  // Streak milestones
+  for (const n of STREAK_MILESTONES) {
+    if (stats.streak === n && !milestonesHit.has(`s${n}`)) {
+      milestonesHit.add(`s${n}`);
+      showToast(`${n} streak!`, '🔥');
+    }
+  }
+  // New best streak
+  if (stats.streak > pBests.longestStreak) {
+    pBests.longestStreak = stats.streak;
+    if (stats.streak >= 5) showToast(`New best streak: ${stats.streak}`, '⚡');
+  }
+  // Fastest response
+  if (entry.sec < pBests.fastestSec) {
+    const prev = pBests.fastestSec;
+    pBests.fastestSec = entry.sec;
+    if (prev !== Infinity && entry.sec <= prev * 0.88) {
+      showToast(`New fastest: ${entry.sec.toFixed(2)}s`, '⚡');
+    }
+  }
+}
+
+// Lerp color from green (t=0) → amber (t=0.5) → red (t=1)
+function speedColorHex(t) {
+  t = Math.min(1, Math.max(0, t));
+  let r, g, b;
+  if (t < 0.5) {
+    const u = t * 2;
+    r = Math.round(0x4c + u * (0xc9 - 0x4c));
+    g = Math.round(0xc9 + u * (0xa0 - 0xc9));
+    b = Math.round(0x7c + u * (0x30 - 0x7c));
+  } else {
+    const u = (t - 0.5) * 2;
+    r = Math.round(0xc9);
+    g = Math.round(0xa0 + u * (0x4c - 0xa0));
+    b = Math.round(0x30 + u * (0x4c - 0x30));
+  }
+  return `rgb(${r},${g},${b})`;
+}
+
+// Collect semitone-level timing entries (merges aliases like C# and Db)
+function getSemitoneEntries(semitone) {
+  const keys = SEMITONE_ALIASES[semitone];
+  return keys.flatMap(k => noteTimings[k] ?? []);
+}
 
 function stdDev(vals) {
   if (vals.length < 2) return 0;
@@ -1686,6 +1877,8 @@ function clearStats() {
   Object.keys(chordStats).forEach(k => delete chordStats[k]);
   Object.keys(noteWeights).forEach(k => delete noteWeights[k]);
   Object.keys(chordWeights).forEach(k => delete chordWeights[k]);
+  pBests.fastestSec = Infinity; pBests.longestStreak = 0;
+  milestonesHit.clear();
   clearTiming();
   updateStatsUI();
   saveStats();
@@ -1865,9 +2058,13 @@ function setPlaying(val) {
     state.pausedAt = performance.now();
     state.pausedWallClock = Date.now();
     sessionPauseStart = Date.now();
+    saveStats(); // persist accumulated practice time on pause
   }
   updateSessionStatusUI();
 }
+
+window.addEventListener('beforeunload', saveStats);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveStats(); });
 
 // ─── HISTORY ───────────────────────────────────────────────────────────────
 
