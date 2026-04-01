@@ -51,7 +51,8 @@ body {
   justify-content: center;
   overflow: hidden;
   position: relative;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  /* Reserve space at the bottom so the centered content clears the chart strip */
+  padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Subtle grain overlay */
@@ -630,7 +631,7 @@ header {
 }
 .avg-time-std {
   font-family: 'Syne', sans-serif;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-dim);
   line-height: 1;
@@ -704,7 +705,7 @@ header {
 }
 .cw-std {
   font-family: 'Syne', sans-serif;
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 600;
   color: var(--text-dim);
   line-height: 1;
