@@ -170,6 +170,7 @@ const milestonesHit = new Set(); // keys like "c100", "s20" — each fires only 
 const SESSION_START_WALL = Date.now();
 let sessionPausedMs = 0;       // total ms spent paused so far
 let sessionPauseStart = Date.now(); // app starts paused; setPlaying(true) clears this
+// NOTE: state.pausedAt is initialised after DOM-ready init below (search "app starts paused")
 let allTimePracticeMs = 0;     // persisted total practice ms from all previous sessions
 
 // Semitone aliases for note heatmap (index = semitone 0–11)
@@ -1686,11 +1687,13 @@ function computeSmoothed(entries, windowMs) {
   });
 }
 
-function updateAvgTimeUI() {
+function updateAvgTimeUI(force) {
   const row = document.getElementById('avgTimeRow');
   if (!row) return;
   row.style.display = state.showAvgTime ? '' : 'none';
   if (!state.showAvgTime) return;
+  // While paused, freeze the displayed values so short windows don't vanish
+  if (!state.playing && !force) return;
   const windows = [
     { id: 'avgTime5s',   stdId: 'avgTimeStd5s',   ms: 5_000 },
     { id: 'avgTime10s',  stdId: 'avgTimeStd10s',  ms: 10_000 },
@@ -1730,9 +1733,11 @@ function updateSessionStatusUI() {
 setInterval(updateSessionStatusUI, 1000);
 
 
-function renderTimingChart() {
+function renderTimingChart(force) {
   const wrap = document.getElementById('timingChartWrap');
   if (!wrap) return;
+  // While paused, freeze the chart so short windows don't vanish
+  if (!state.playing && !force) return;
   if (!state.showAvgTime || timingEntries.length < 2) {
     wrap.style.display = 'none';
     return;
@@ -1922,8 +1927,8 @@ function renderAccuracyRanking() {
 function clearRunningAvg() {
   timingEntries.length = 0;
   Object.keys(noteTimings).forEach(k => delete noteTimings[k]);
-  updateAvgTimeUI();
-  renderTimingChart();
+  updateAvgTimeUI(true);
+  renderTimingChart(true);
   saveStats();
 }
 
@@ -2156,6 +2161,9 @@ function setPlaying(val) {
     state.pausedAt = null;
     state.pausedWallClock = null;
     startTimer();
+    // Refresh timing display now that the reference clock is live again
+    updateAvgTimeUI(true);
+    renderTimingChart(true);
   } else {
     stopTimer();
     cancelAutoAdvance();
@@ -2250,11 +2258,16 @@ loadStats();
   const item = nextItem(false);
   if (item) { history.push(item); histIdx = 0; renderDisplay(item, false); }
 
+  // App starts paused — mirror setPlaying(false) so the first card's timing
+  // is correctly adjusted when the user hits play.
+  state.pausedAt = performance.now();
+  state.pausedWallClock = Date.now();
+
   applyTheme();
   updateModeUI();
   updateTimerUI();
-  updateAvgTimeUI();
-  renderTimingChart();
+  updateAvgTimeUI(true);
+  renderTimingChart(true);
   renderChordRanking();
   renderAccuracyRanking();
   updateSessionStatusUI();
@@ -2437,8 +2450,8 @@ document.addEventListener('click', e => {
   } else if (key === 'showAvgTime') {
     state.showAvgTime = !state.showAvgTime;
     tog.classList.toggle('on', state.showAvgTime);
-    updateAvgTimeUI();
-    renderTimingChart();
+    updateAvgTimeUI(true);
+    renderTimingChart(true);
     saveSettings();
   } else if (key === 'showDegrees') {
     state.showScaleDegrees = !state.showScaleDegrees;

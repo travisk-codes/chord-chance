@@ -51,7 +51,8 @@ body {
   justify-content: center;
   overflow: hidden;
   position: relative;
-  /* Reserve space at the bottom so the centered content clears the chart strip */
+  /* Reserve space so centered content clears the fixed header and chart strip */
+  padding-top: 80px;
   padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
 }
 
