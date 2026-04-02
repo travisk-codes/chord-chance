@@ -126,11 +126,11 @@ header {
 }
 
 .session-status {
-  font-size: 9px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--green);
   opacity: 0.75;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   font-weight: 600;
 }
 .session-status.status-paused {
@@ -642,14 +642,14 @@ header {
 }
 .avg-time-val {
   font-family: 'Syne', sans-serif;
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--gold);
   line-height: 1;
 }
 .avg-time-std {
   font-family: 'Syne', sans-serif;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-dim);
   line-height: 1;
@@ -716,21 +716,21 @@ header {
 .cw-item.active .cw-lbl { color: var(--text); }
 .cw-val {
   font-family: 'Syne', sans-serif;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--gold);
   line-height: 1;
 }
 .cw-std {
   font-family: 'Syne', sans-serif;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-dim);
   line-height: 1;
 }
 .cw-lbl {
   font-family: 'Syne', sans-serif;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -765,7 +765,7 @@ header {
 }
 .cr-rank {
   font-family: 'Syne', sans-serif;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-dim);
   width: 10px;
@@ -775,15 +775,15 @@ header {
 }
 .cr-name {
   font-family: 'Syne', sans-serif;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text-dim);
-  min-width: 26px;
+  min-width: 32px;
 }
 .cr-row.cr-current .cr-name { color: var(--gold); }
 .cr-time {
   font-family: 'Syne', sans-serif;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text);
 }
@@ -1213,3 +1213,60 @@ kbd {
 }
 .summary-table th:last-child,
 .summary-table td:last-child { color: var(--text-dim); font-size: 12px; }
+
+/* ── ACCURACY BAR CHART (fixed left side) ── */
+.accuracy-bars {
+  position: fixed;
+  left: 8px;
+  top: calc(50% - 60px);
+  transform: translateY(-50%);
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.72;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.ab-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+.ab-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 84px;
+}
+.ab-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 2px;
+}
+.ab-bar {
+  width: 10px;
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  flex-shrink: 0;
+}
+.ab-lbl {
+  font-family: 'Syne', sans-serif;
+  font-size: 7px;
+  font-weight: 700;
+  color: var(--text-dim);
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  line-height: 1;
+  max-height: 28px;
+  overflow: hidden;
+}

@@ -1495,6 +1495,7 @@ function setFeedbackState(s, detectedNote, customMsg) {
     updateAvgTimeUI();
     renderTimingChart();
     renderChordRanking();
+    renderAccuracyBars();
     saveStats();
   }
 
@@ -1565,6 +1566,7 @@ function updateStatsUI() {
   } else {
     streakRow.style.display = 'none';
   }
+  renderAccuracyBars();
 }
 
 function windowAvg(ms) {
@@ -1860,6 +1862,46 @@ function renderChordRanking() {
   ).join('');
 }
 
+function renderAccuracyBars() {
+  const el = document.getElementById('accuracyBars');
+  if (!el) return;
+  if (state.mode === 'ear') { el.style.display = 'none'; return; }
+
+  let items;
+  if (state.mode === 'note') {
+    items = Object.entries(noteStats)
+      .filter(([, s]) => s.c + s.w > 0)
+      .map(([key, s]) => ({
+        label: key.replace('#', '♯').replace('b', '♭'),
+        acc: s.c / (s.c + s.w),
+      }));
+  } else {
+    items = CHORD_TYPES
+      .filter(ct => chordStats[ct.val] && chordStats[ct.val].c + chordStats[ct.val].w > 0)
+      .map(ct => {
+        const s = chordStats[ct.val];
+        return { label: ct.symbol, acc: s.c / (s.c + s.w) };
+      });
+  }
+
+  if (!items.length) { el.style.display = 'none'; return; }
+  el.style.display = '';
+
+  const BAR_MAX = 72; // px
+  el.innerHTML =
+    `<div class="ab-title">accuracy</div>` +
+    `<div class="ab-bars">` +
+    items.map(({ label, acc }) => {
+      const h     = Math.max(2, Math.round(acc * BAR_MAX));
+      const color = speedColorHex(1 - acc);
+      return `<div class="ab-col" title="${label}: ${Math.round(acc * 100)}%">` +
+        `<div class="ab-bar" style="height:${h}px;background:${color}"></div>` +
+        `<div class="ab-lbl">${label}</div>` +
+        `</div>`;
+    }).join('') +
+    `</div>`;
+}
+
 function clearTiming() {
   timingEntries.length = 0;
   Object.keys(chordTypeTimings).forEach(k => delete chordTypeTimings[k]);
@@ -1868,6 +1910,7 @@ function clearTiming() {
   updateAvgTimeUI();
   renderTimingChart();
   renderChordRanking();
+  renderAccuracyBars();
   saveStats();
 }
 
@@ -1968,6 +2011,7 @@ function renderDisplay(item, animate = true) {
     if (state.midiActive && heldMidiNotes.size > 0) evaluateMidi();
   }
   renderChordRanking();
+  renderAccuracyBars();
   updateGlowPosition();
 }
 
@@ -1991,6 +2035,7 @@ function updateModeUI() {
     if (invDisplay && state.mode !== 'chord') invDisplay.textContent = '';
   }
   renderChordRanking();
+  renderAccuracyBars();
 }
 
 // ─── TIMER ─────────────────────────────────────────────────────────────────
@@ -2152,6 +2197,7 @@ loadStats();
   updateAvgTimeUI();
   renderTimingChart();
   renderChordRanking();
+  renderAccuracyBars();
   updateSessionStatusUI();
   updateGlowPosition();
 })();
