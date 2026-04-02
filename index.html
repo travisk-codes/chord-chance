@@ -18,7 +18,7 @@
 
 <header>
   <div class="logo-wrap">
-    <div class="logo">Chord Chance<span class="app-version">v4.1.1</span></div>
+    <div class="logo">Chord Chance<span class="app-version">v4.1.2</span></div>
     <div id="sessionStatus" class="session-status">⏸ 0:00</div>
   </div>
   <div class="header-right">
@@ -76,7 +76,7 @@
 <div class="stage">
   <div class="mode-hint-row">
     <div class="label" id="modeLabel">Note</div>
-    <div class="ctrl-btn hint-btn" id="hintBtn" title="Play hint (H)">
+    <div class="hint-btn" id="hintBtn" title="Play hint (H)">
       <svg viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
       </svg>
@@ -448,8 +448,19 @@
             <span class="avg-time-std" id="avgTimeStd30m"></span>
             <span class="avg-time-lbl">30m</span>
           </div>
-          <button class="clear-timing-btn" id="clearTimingBtn" title="Clear timing data">×</button>
         </div>
+        <div class="clear-row">
+          <span class="clear-row-label">Running avg</span>
+          <button class="clear-timing-btn" id="clearTimingBtn" title="Clear running average data">clear</button>
+        </div>
+      </div>
+      <div class="clear-row" style="margin-top:6px">
+        <span class="clear-row-label">Speed rankings</span>
+        <button class="clear-timing-btn" id="clearSpeedBtn" title="Clear speed ranking data">clear</button>
+      </div>
+      <div class="clear-row" style="margin-top:4px">
+        <span class="clear-row-label">Accuracy rankings</span>
+        <button class="clear-timing-btn" id="clearAccBtn" title="Clear accuracy ranking data">clear</button>
       </div>
       <div style="display:flex;gap:8px;margin-top:10px">
         <button class="summary-btn" id="summaryBtn">Summary</button>

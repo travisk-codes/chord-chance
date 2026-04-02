@@ -395,11 +395,6 @@ header {
   box-shadow: 0 0 16px rgba(76,201,124,0.2);
 }
 
-.hint-btn {
-  width: 40px !important;
-  height: 40px !important;
-}
-.hint-btn svg { width: 16px; height: 16px; }
 
 .audio-level {
   width: 100px;
@@ -680,11 +675,12 @@ header {
 .clear-timing-btn {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   color: var(--text-dim);
-  font-size: 14px;
-  width: 26px;
-  height: 26px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  height: 20px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -693,6 +689,18 @@ header {
   flex-shrink: 0;
 }
 .clear-timing-btn:hover { color: var(--text); border-color: var(--gold); }
+
+.clear-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.clear-row-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.75;
+}
 
 /* ── TIMING CHART (full-width background strip at bottom) ── */
 .timing-chart-wrap {
@@ -1260,9 +1268,18 @@ kbd {
   justify-content: center;
   gap: 8px;
 }
-.mode-hint-row .hint-btn {
-  width: 28px;
-  height: 28px;
-  opacity: 0.55;
+.hint-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text);
+  opacity: 0.35;
+  transition: opacity 0.15s;
+  line-height: 1;
 }
-.mode-hint-row .hint-btn:hover { opacity: 1; }
+.hint-btn svg { width: 14px; height: 14px; display: block; }
+.hint-btn:hover { opacity: 0.75; }

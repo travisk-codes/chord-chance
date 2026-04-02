@@ -1919,17 +1919,31 @@ function renderAccuracyRanking() {
     ).join('');
 }
 
-function clearTiming() {
+function clearRunningAvg() {
   timingEntries.length = 0;
-  Object.keys(chordTypeTimings).forEach(k => delete chordTypeTimings[k]);
   Object.keys(noteTimings).forEach(k => delete noteTimings[k]);
-  Object.keys(cardTimings).forEach(k => delete cardTimings[k]);
-  Object.keys(cardAccStats).forEach(k => delete cardAccStats[k]);
   updateAvgTimeUI();
   renderTimingChart();
+  saveStats();
+}
+
+function clearSpeedRanking() {
+  Object.keys(cardTimings).forEach(k => delete cardTimings[k]);
+  Object.keys(chordTypeTimings).forEach(k => delete chordTypeTimings[k]);
   renderChordRanking();
+  saveStats();
+}
+
+function clearAccuracyRanking() {
+  Object.keys(cardAccStats).forEach(k => delete cardAccStats[k]);
   renderAccuracyRanking();
   saveStats();
+}
+
+function clearTiming() {
+  clearRunningAvg();
+  clearSpeedRanking();
+  clearAccuracyRanking();
 }
 
 function clearStats() {
@@ -2523,7 +2537,7 @@ playPauseBtn.addEventListener('click', () => setPlaying(!state.playing));
 prevBtn.addEventListener('click', () => goBack());
 nextBtn.addEventListener('click', () => goForward());
 noteDisplay.addEventListener('click', () => goForward());
-hintBtn.addEventListener('click', playHint);
+hintBtn.addEventListener('click', e => { e.stopPropagation(); playHint(); });
 
 // ─── SWIPE GESTURES ────────────────────────────────────────────────────────
 
@@ -2590,7 +2604,11 @@ closePanelStats.addEventListener('click', closeAllPanels);
 
 document.getElementById('clearStatsBtn').addEventListener('click', clearStats);
 const clearTimingBtn = document.getElementById('clearTimingBtn');
-if (clearTimingBtn) clearTimingBtn.addEventListener('click', clearTiming);
+if (clearTimingBtn) clearTimingBtn.addEventListener('click', clearRunningAvg);
+const clearSpeedBtn = document.getElementById('clearSpeedBtn');
+if (clearSpeedBtn) clearSpeedBtn.addEventListener('click', clearSpeedRanking);
+const clearAccBtn = document.getElementById('clearAccBtn');
+if (clearAccBtn) clearAccBtn.addEventListener('click', clearAccuracyRanking);
 if (summaryBtn) summaryBtn.addEventListener('click', openSummary);
 if (summaryOverlay) summaryOverlay.addEventListener('click', closeSummary);
 const closeSummaryBtn = document.getElementById('closeSummary');
