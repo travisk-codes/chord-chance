@@ -679,6 +679,7 @@ function startAudioPipeline(stream) {
   let pendingCorrectTimer = null;
 
   function audioTick() {
+    if (!state.playing) { state.audioLoop = requestAnimationFrame(audioTick); return; }
     state.analyser.getFloatTimeDomainData(floatData);
     state.analyser.getByteFrequencyData(byteFreqData);
 
@@ -808,6 +809,7 @@ function midiNoteName(n) {
 }
 
 function evaluateMidi() {
+  if (!state.playing) return;
   if (state.earMode) return;
   // Once correct is detected, don't overwrite with neutral/wrong while notes
   // are still being processed — let the auto-advance timer run to completion.
