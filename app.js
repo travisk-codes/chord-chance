@@ -2678,7 +2678,7 @@ document.addEventListener('click', e => {
   const item = e.target.closest('[data-cw-key]');
   if (!item) return;
   chartWindowKey = item.dataset.cwKey;
-  renderTimingChart();
+  renderTimingChart(true);
 });
 
 // ─── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────
