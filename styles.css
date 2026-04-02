@@ -51,8 +51,7 @@ body {
   justify-content: center;
   overflow: hidden;
   position: relative;
-  /* Reserve space so centered content clears the fixed header and chart strip */
-  padding-top: 48px;
+  /* Reserve space at the bottom so the centered content clears the chart strip */
   padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
 }
 
@@ -93,7 +92,6 @@ header {
   position: fixed;
   top: 0; left: 0; right: 0;
   display: flex;
-  align-items: center;
   justify-content: space-between;
   padding: 28px;
   z-index: 10;
@@ -838,6 +836,23 @@ header {
   margin-top: 8px;
 }
 .reset-btn:hover { border-color: var(--red); color: var(--red); }
+
+.summary-btn {
+  flex: 1;
+  padding: 11px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-family: 'Syne', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.summary-btn:hover { border-color: var(--gold); color: var(--gold); }
 
 /* ── SETTING TOGGLES ── */
 .toggle-list { display: flex; flex-direction: column; gap: 14px; }

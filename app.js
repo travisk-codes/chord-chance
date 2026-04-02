@@ -186,6 +186,7 @@ const CHART_WINDOWS = [
   { key: '10m', ms: 600_000 }, { key: '15m', ms: 900_000 }, { key: '30m', ms: 1_800_000 },
 ];
 let chartWindowKey = '5m'; // which window the smoothed line represents
+let cachedWindowStats = {}; // { [key]: { avg, std } } — frozen snapshot while paused
 
 const noteWeights = {};
 const chordWeights = {};
@@ -1796,8 +1797,15 @@ function renderTimingChart(force) {
   ).join('');
 
   // Window selector labels — active one is highlighted
-  const windows = CHART_WINDOWS.map(({ key, ms }) => {
-    const avg = windowAvg(ms), std = windowStd(ms);
+  // While playing, compute fresh stats and cache them; while paused, use cache
+  if (state.playing || !Object.keys(cachedWindowStats).length) {
+    cachedWindowStats = {};
+    for (const { key, ms } of CHART_WINDOWS) {
+      cachedWindowStats[key] = { avg: windowAvg(ms), std: windowStd(ms) };
+    }
+  }
+  const windows = CHART_WINDOWS.map(({ key }) => {
+    const { avg, std } = cachedWindowStats[key] || { avg: null, std: null };
     return `<span class="cw-item${key === chartWindowKey ? ' active' : ''}" data-cw-key="${key}">` +
       `<span class="cw-val">${fmtSec(avg)}</span>` +
       (std ? `<span class="cw-std">${fmtStd(std)}</span>` : '') +
@@ -1927,6 +1935,7 @@ function renderAccuracyRanking() {
 function clearRunningAvg() {
   timingEntries.length = 0;
   Object.keys(noteTimings).forEach(k => delete noteTimings[k]);
+  cachedWindowStats = {};
   updateAvgTimeUI(true);
   renderTimingChart(true);
   saveStats();
