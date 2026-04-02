@@ -57,10 +57,11 @@ function debugDump(label = 'dump') {
   console.log('  desktop:     ', state.desktopActive);
   console.log('  midiMinNote: ', state.midiMinNote);
   console.log('── stats ─────────────────');
-  console.log('  correct:     ', stats.correct);
-  console.log('  wrong:       ', stats.wrong);
-  console.log('  streak:      ', stats.streak);
-  console.log('  bestStreak:  ', stats.bestStreak);
+  const _ms = modeStats();
+  console.log('  correct:     ', _ms.correct);
+  console.log('  wrong:       ', _ms.wrong);
+  console.log('  streak:      ', _ms.streak);
+  console.log('  bestStreak:  ', _ms.bestStreak);
   console.log('  wrongCounted:', wrongCountedMidi);
   console.log('  penaltyTimer:', wrongPenaltyTimer !== null);
   console.groupEnd();
@@ -153,7 +154,14 @@ function anyInputActive() {
   return state.micActive || state.midiActive;
 }
 
-const stats = { correct: 0, wrong: 0, streak: 0, bestStreak: 0 };
+const stats = {
+  note:  { correct: 0, wrong: 0, streak: 0, bestStreak: 0 },
+  chord: { correct: 0, wrong: 0, streak: 0, bestStreak: 0 },
+};
+function modeStats(mode) {
+  const m = mode || state.mode;
+  return m === 'note' ? stats.note : stats.chord;
+}
 const timingEntries = []; // { ts: Date.now(), sec: number }
 const MAX_TIMING = 300;
 const MAX_KEY_TIMINGS = 30; // per chord-type or note key
@@ -201,7 +209,7 @@ function getCurrentSessionActiveMs() {
 function saveStats() {
   try {
     localStorage.setItem('cc2_stats', JSON.stringify({
-      correct: stats.correct, wrong: stats.wrong, bestStreak: stats.bestStreak,
+      noteModeStats: stats.note, chordModeStats: stats.chord,
       noteStats, chordStats, noteWeights, chordWeights,
       timingEntries: timingEntries.slice(-MAX_TIMING),
       chordTypeTimings, noteTimings, cardTimings, cardAccStats,
@@ -216,9 +224,15 @@ function loadStats() {
   try {
     const s = JSON.parse(localStorage.getItem('cc2_stats') || 'null');
     if (!s) return;
-    if (typeof s.correct === 'number')    stats.correct    = s.correct;
-    if (typeof s.wrong === 'number')      stats.wrong      = s.wrong;
-    if (typeof s.bestStreak === 'number') stats.bestStreak = s.bestStreak;
+    // New per-mode stats
+    if (s.noteModeStats)  Object.assign(stats.note,  s.noteModeStats);
+    if (s.chordModeStats) Object.assign(stats.chord, s.chordModeStats);
+    // Backward compat: migrate old single stats into chord mode
+    if (!s.noteModeStats && !s.chordModeStats) {
+      if (typeof s.correct === 'number')    stats.chord.correct    = s.correct;
+      if (typeof s.wrong === 'number')      stats.chord.wrong      = s.wrong;
+      if (typeof s.bestStreak === 'number') stats.chord.bestStreak = s.bestStreak;
+    }
     if (s.noteStats)    Object.assign(noteStats,    s.noteStats);
     if (s.chordStats)   Object.assign(chordStats,   s.chordStats);
     if (s.noteWeights)  Object.assign(noteWeights,  s.noteWeights);
@@ -761,10 +775,11 @@ function cancelWrongPenalty() {
 function fireWrongPenalty() {
   dbg('fireWrongPenalty — streak reset');
   wrongCountedMidi = true;
+  const ms = modeStats();
   const noteKey  = state.current.root + state.current.acc;
   const chordKey = state.current.chord;
-  stats.wrong++;
-  stats.streak = 0;
+  ms.wrong++;
+  ms.streak = 0;
   noteWeights[noteKey]  = Math.min(8, (noteWeights[noteKey]  ?? 1) * 1.8);
   if (chordKey) chordWeights[chordKey] = Math.min(8, (chordWeights[chordKey] ?? 1) * 1.8);
   if (!noteStats[noteKey])  noteStats[noteKey]  = { c: 0, w: 0 };
@@ -1219,12 +1234,13 @@ function showEarChoices(item) {
 }
 
 function recordEarAnswer(isCorrect, item) {
+  const ms = modeStats();
   const noteKey  = item.root + item.acc;
   const chordKey = item.chord;
   if (isCorrect) {
-    stats.correct++;
-    stats.streak++;
-    if (stats.streak > stats.bestStreak) stats.bestStreak = stats.streak;
+    ms.correct++;
+    ms.streak++;
+    if (ms.streak > ms.bestStreak) ms.bestStreak = ms.streak;
     noteWeights[noteKey]  = Math.max(1, (noteWeights[noteKey]  ?? 1) / 1.15);
     if (chordKey) chordWeights[chordKey] = Math.max(1, (chordWeights[chordKey] ?? 1) / 1.15);
     if (!noteStats[noteKey])  noteStats[noteKey]  = { c: 0, w: 0 };
@@ -1239,8 +1255,8 @@ function recordEarAnswer(isCorrect, item) {
       }
     }
   } else {
-    stats.wrong++;
-    stats.streak = 0;
+    ms.wrong++;
+    ms.streak = 0;
     noteWeights[noteKey]  = Math.min(8, (noteWeights[noteKey]  ?? 1) * 1.8);
     if (chordKey) chordWeights[chordKey] = Math.min(8, (chordWeights[chordKey] ?? 1) * 1.8);
     if (!noteStats[noteKey])  noteStats[noteKey]  = { c: 0, w: 0 };
@@ -1292,16 +1308,19 @@ function handleEarChoice(isCorrect, clickedBtn, allBtns, item) {
 
 function openSummary() {
   if (!summaryPanel) return;
-  const total = stats.correct + stats.wrong;
-  const accuracy = total > 0 ? Math.round(stats.correct / total * 100) : null;
+  const ms = modeStats();
+  const total = ms.correct + ms.wrong;
+  const accuracy = total > 0 ? Math.round(ms.correct / total * 100) : null;
+  const modeLabel = state.earMode ? 'Ear' : (state.mode === 'note' ? 'Note' : 'Chord');
 
   // ── Overall ────────────────────────────────────────────────────────────────
   let html = `
     <div class="summary-overall">
-      <div class="stat-row"><span>Correct</span><strong>${stats.correct}</strong></div>
-      <div class="stat-row"><span>Wrong</span><strong>${stats.wrong}</strong></div>
+      <div class="stat-row"><span>Mode</span><strong>${modeLabel}</strong></div>
+      <div class="stat-row"><span>Correct</span><strong>${ms.correct}</strong></div>
+      <div class="stat-row"><span>Wrong</span><strong>${ms.wrong}</strong></div>
       <div class="stat-row"><span>Accuracy</span><strong>${accuracy != null ? accuracy + '%' : '—'}</strong></div>
-      <div class="stat-row"><span>Best streak</span><strong>${stats.bestStreak}</strong></div>
+      <div class="stat-row"><span>Best streak</span><strong>${ms.bestStreak}</strong></div>
     </div>`;
 
   // ── Personal Bests ─────────────────────────────────────────────────────────
@@ -1326,7 +1345,7 @@ function openSummary() {
   html += `<div class="summary-section-title">Personal Bests</div>
     <div class="summary-bests">
       <div class="stat-row"><span>Fastest answer</span><strong>${pBests.fastestSec < Infinity ? pBests.fastestSec.toFixed(2) + 's' : '—'}</strong></div>
-      <div class="stat-row"><span>Best streak</span><strong>${pBests.longestStreak || stats.bestStreak}</strong></div>
+      <div class="stat-row"><span>Best streak</span><strong>${pBests.longestStreak || ms.bestStreak}</strong></div>
       <div class="stat-row"><span>Total practice</span><strong>${totalPractice > 0 ? fmtDuration(totalPractice) : '—'}</strong></div>
       ${cardsPerMin ? `<div class="stat-row"><span>Cards / min (5m)</span><strong>${cardsPerMin}</strong></div>` : ''}
       ${trendHtml ? `<div class="stat-row trend-row">${trendHtml}</div>` : ''}
@@ -1420,9 +1439,10 @@ function openSummary() {
 }
 
 function copySummaryToClipboard() {
-  const total = stats.correct + stats.wrong;
+  const ms = modeStats();
+  const total = ms.correct + ms.wrong;
   let text = `Chord Chance — Session Summary\n`;
-  text += `Correct: ${stats.correct}  Wrong: ${stats.wrong}  Accuracy: ${total > 0 ? Math.round(stats.correct/total*100)+'%' : '—'}  Best streak: ${stats.bestStreak}\n`;
+  text += `Correct: ${ms.correct}  Wrong: ${ms.wrong}  Accuracy: ${total > 0 ? Math.round(ms.correct/total*100)+'%' : '—'}  Best streak: ${ms.bestStreak}\n`;
   const noteEntries = Object.entries(noteStats).sort((a,b) => (b[1].w - b[1].c) - (a[1].w - a[1].c));
   if (noteEntries.length) {
     text += `\nNotes\n`;
@@ -1517,13 +1537,14 @@ function setFeedbackState(s, detectedNote, customMsg) {
 
 function recordAdvance() {
   if (!anyInputActive()) return;
+  const ms = modeStats();
   const noteKey  = state.current.root + state.current.acc;
   const chordKey = state.current.chord;
 
   if (state.feedbackState === 'correct') {
-    stats.correct++;
-    stats.streak++;
-    if (stats.streak > stats.bestStreak) stats.bestStreak = stats.streak;
+    ms.correct++;
+    ms.streak++;
+    if (ms.streak > ms.bestStreak) ms.bestStreak = ms.streak;
     // Decrease weight (floor at 1)
     noteWeights[noteKey]  = Math.max(1, (noteWeights[noteKey]  ?? 1) / 1.15);
     if (chordKey) chordWeights[chordKey] = Math.max(1, (chordWeights[chordKey] ?? 1) / 1.15);
@@ -1540,8 +1561,8 @@ function recordAdvance() {
       }
     }
   } else if (state.feedbackState === 'wrong' && !wrongCountedMidi) {
-    stats.wrong++;
-    stats.streak = 0;
+    ms.wrong++;
+    ms.streak = 0;
     noteWeights[noteKey]  = Math.min(8, (noteWeights[noteKey]  ?? 1) * 1.8);
     if (chordKey) chordWeights[chordKey] = Math.min(8, (chordWeights[chordKey] ?? 1) * 1.8);
     if (!noteStats[noteKey])  noteStats[noteKey]  = { c: 0, w: 0 };
@@ -1562,15 +1583,16 @@ function recordAdvance() {
 }
 
 function updateStatsUI() {
-  const total = stats.correct + stats.wrong;
-  statCorrect.textContent  = stats.correct;
-  statWrong.textContent    = stats.wrong;
-  statBest.textContent     = stats.bestStreak;
-  statAccuracy.textContent = total > 0 ? Math.round(stats.correct / total * 100) + '%' : '—';
+  const ms = modeStats();
+  const total = ms.correct + ms.wrong;
+  statCorrect.textContent  = ms.correct;
+  statWrong.textContent    = ms.wrong;
+  statBest.textContent     = ms.bestStreak;
+  statAccuracy.textContent = total > 0 ? Math.round(ms.correct / total * 100) + '%' : '—';
 
-  if (stats.streak >= 2 && anyInputActive()) {
+  if (ms.streak >= 2 && anyInputActive()) {
     streakRow.style.display = '';
-    streakBadge.textContent = stats.streak;
+    streakBadge.textContent = ms.streak;
   } else {
     streakRow.style.display = 'none';
   }
@@ -1619,24 +1641,25 @@ const CORRECT_MILESTONES = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
 const STREAK_MILESTONES  = [5, 10, 20, 30, 50, 100];
 
 function checkMilestones(entry) {
+  const ms = modeStats();
   // Correct count milestones
   for (const n of CORRECT_MILESTONES) {
-    if (stats.correct === n && !milestonesHit.has(`c${n}`)) {
+    if (ms.correct === n && !milestonesHit.has(`c${n}`)) {
       milestonesHit.add(`c${n}`);
       showToast(`${n} correct answers`, '🎯');
     }
   }
   // Streak milestones
   for (const n of STREAK_MILESTONES) {
-    if (stats.streak === n && !milestonesHit.has(`s${n}`)) {
+    if (ms.streak === n && !milestonesHit.has(`s${n}`)) {
       milestonesHit.add(`s${n}`);
       showToast(`${n} streak!`, '🔥');
     }
   }
   // New best streak
-  if (stats.streak > pBests.longestStreak) {
-    pBests.longestStreak = stats.streak;
-    if (stats.streak >= 5) showToast(`New best streak: ${stats.streak}`, '⚡');
+  if (ms.streak > pBests.longestStreak) {
+    pBests.longestStreak = ms.streak;
+    if (ms.streak >= 5) showToast(`New best streak: ${ms.streak}`, '⚡');
   }
   // Fastest response
   if (entry.sec < pBests.fastestSec) {
@@ -1960,17 +1983,28 @@ function clearTiming() {
   clearAccuracyRanking();
 }
 
-function clearStats() {
-  stats.correct = 0; stats.wrong = 0; stats.streak = 0; stats.bestStreak = 0;
-  Object.keys(noteStats).forEach(k => delete noteStats[k]);
-  Object.keys(chordStats).forEach(k => delete chordStats[k]);
-  Object.keys(noteWeights).forEach(k => delete noteWeights[k]);
-  Object.keys(chordWeights).forEach(k => delete chordWeights[k]);
-  pBests.fastestSec = Infinity; pBests.longestStreak = 0;
-  milestonesHit.clear();
+function clearModeStats(mode) {
+  const ms = modeStats(mode);
+  ms.correct = 0; ms.wrong = 0; ms.streak = 0; ms.bestStreak = 0;
+  if (mode === 'note') {
+    Object.keys(noteWeights).forEach(k => delete noteWeights[k]);
+  } else {
+    Object.keys(chordWeights).forEach(k => delete chordWeights[k]);
+  }
   // Reset current card timer so the pre-clear time isn't counted
   state.cardShownAt = performance.now();
   if (state.pausedAt !== null) state.pausedAt = performance.now();
+  updateStatsUI();
+  saveStats();
+}
+
+function clearAllStats() {
+  clearModeStats('note');
+  clearModeStats('chord');
+  Object.keys(noteStats).forEach(k => delete noteStats[k]);
+  Object.keys(chordStats).forEach(k => delete chordStats[k]);
+  pBests.fastestSec = Infinity; pBests.longestStreak = 0;
+  milestonesHit.clear();
   clearTiming();
   updateStatsUI();
   saveStats();
@@ -2090,6 +2124,7 @@ function updateModeUI() {
   }
   renderChordRanking();
   renderAccuracyRanking();
+  updateStatsUI();
 }
 
 // ─── TIMER ─────────────────────────────────────────────────────────────────
@@ -2124,10 +2159,11 @@ function startTimer() {
     if (elapsed >= duration) {
       // Count as wrong if the card was never answered correctly
       if (state.feedbackState !== 'correct' && anyInputActive() && state.cardShownAt !== null) {
+        const _ms = modeStats();
         const noteKey = state.current.root + state.current.acc;
         const chordKey = state.current.chord;
-        stats.wrong++;
-        stats.streak = 0;
+        _ms.wrong++;
+        _ms.streak = 0;
         noteWeights[noteKey]  = Math.min(8, (noteWeights[noteKey]  ?? 1) * 1.8);
         if (chordKey) chordWeights[chordKey] = Math.min(8, (chordWeights[chordKey] ?? 1) * 1.8);
         if (!noteStats[noteKey])  noteStats[noteKey]  = { c: 0, w: 0 };
@@ -2631,7 +2667,11 @@ closePanelApp.addEventListener('click',   closeAllPanels);
 closePanelMusic.addEventListener('click', closeAllPanels);
 closePanelStats.addEventListener('click', closeAllPanels);
 
-document.getElementById('clearStatsBtn').addEventListener('click', clearStats);
+document.getElementById('clearStatsBtn').addEventListener('click', clearAllStats);
+const clearNoteStatsBtn = document.getElementById('clearNoteStatsBtn');
+if (clearNoteStatsBtn) clearNoteStatsBtn.addEventListener('click', () => clearModeStats('note'));
+const clearChordStatsBtn = document.getElementById('clearChordStatsBtn');
+if (clearChordStatsBtn) clearChordStatsBtn.addEventListener('click', () => clearModeStats('chord'));
 const clearTimingBtn = document.getElementById('clearTimingBtn');
 if (clearTimingBtn) clearTimingBtn.addEventListener('click', clearRunningAvg);
 const clearSpeedBtn = document.getElementById('clearSpeedBtn');

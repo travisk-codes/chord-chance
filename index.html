@@ -18,7 +18,7 @@
 
 <header>
   <div class="logo-wrap">
-    <div class="logo">Chord Chance<span class="app-version">v4.1.7</span></div>
+    <div class="logo">Chord Chance<span class="app-version">v4.1.8</span></div>
     <div id="sessionStatus" class="session-status">⏸ 0:00</div>
   </div>
   <div class="header-right">
@@ -449,7 +449,7 @@
             <span class="avg-time-lbl">30m</span>
           </div>
         </div>
-        <div class="clear-row">
+        <div class="clear-row" style="margin-top:10px">
           <span class="clear-row-label">Running avg</span>
           <button class="clear-timing-btn" id="clearTimingBtn" title="Clear running average data">clear</button>
         </div>
@@ -462,9 +462,17 @@
         <span class="clear-row-label">Accuracy rankings</span>
         <button class="clear-timing-btn" id="clearAccBtn" title="Clear accuracy ranking data">clear</button>
       </div>
+      <div class="clear-row" style="margin-top:4px">
+        <span class="clear-row-label">Note scores</span>
+        <button class="clear-timing-btn" id="clearNoteStatsBtn" title="Clear note mode scores">clear</button>
+      </div>
+      <div class="clear-row" style="margin-top:4px">
+        <span class="clear-row-label">Chord scores</span>
+        <button class="clear-timing-btn" id="clearChordStatsBtn" title="Clear chord mode scores">clear</button>
+      </div>
       <div style="display:flex;gap:8px;margin-top:10px">
         <button class="summary-btn" id="summaryBtn">Summary</button>
-        <button class="reset-btn" id="clearStatsBtn" style="margin-top:0;flex:1">Clear Stats</button>
+        <button class="reset-btn" id="clearStatsBtn" style="margin-top:0;flex:1">Clear All</button>
       </div>
     </div>
 
