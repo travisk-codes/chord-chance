@@ -1880,7 +1880,7 @@ function renderAccuracyRanking() {
   let ranked;
   if (state.mode === 'note') {
     ranked = Object.entries(noteStats)
-      .filter(([, s]) => s.c + s.w >= 2)
+      .filter(([, s]) => s.c + s.w >= 1)
       .map(([key, s]) => ({
         key,
         display: key.replace('#', '♯').replace('b', '♭'),
@@ -1889,7 +1889,7 @@ function renderAccuracyRanking() {
       .sort((a, b) => b.acc - a.acc);
   } else {
     ranked = Object.entries(cardAccStats)
-      .filter(([, s]) => s.c + s.w >= 2)
+      .filter(([, s]) => s.c + s.w >= 1)
       .map(([key, s]) => {
         const [rootAcc, chordVal, invStr] = key.split('|');
         const ct  = CHORD_TYPES.find(c => c.val === chordVal);
@@ -2537,7 +2537,9 @@ playPauseBtn.addEventListener('click', () => setPlaying(!state.playing));
 prevBtn.addEventListener('click', () => goBack());
 nextBtn.addEventListener('click', () => goForward());
 noteDisplay.addEventListener('click', () => goForward());
-hintBtn.addEventListener('click', e => { e.stopPropagation(); playHint(); });
+hintBtn.addEventListener('click',      e => { e.stopPropagation(); e.preventDefault(); playHint(); });
+hintBtn.addEventListener('touchend',   e => { e.stopPropagation(); e.preventDefault(); playHint(); }, { passive: false });
+hintBtn.addEventListener('touchstart', e => { e.stopPropagation(); }, { passive: true });
 
 // ─── SWIPE GESTURES ────────────────────────────────────────────────────────
 

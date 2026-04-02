@@ -1266,7 +1266,12 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+/* override the .label's own margin-bottom so it doesn't shift the row alignment */
+.mode-hint-row .label {
+  margin-bottom: 0;
 }
 .hint-btn {
   display: inline-flex;
@@ -1274,12 +1279,17 @@ kbd {
   justify-content: center;
   background: none;
   border: none;
-  padding: 0;
+  padding: 10px;
+  margin: -10px;
   cursor: pointer;
   color: var(--text);
   opacity: 0.35;
   transition: opacity 0.15s;
   line-height: 1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  position: relative;
 }
-.hint-btn svg { width: 14px; height: 14px; display: block; }
+.hint-btn svg { width: 14px; height: 14px; display: block; pointer-events: none; }
 .hint-btn:hover { opacity: 0.75; }
