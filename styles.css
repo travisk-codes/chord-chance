@@ -634,9 +634,9 @@ header {
 }
 
 .avg-time-windows {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px 4px;
   margin-top: 10px;
   padding: 10px 12px;
   background: var(--surface2);
@@ -644,7 +644,6 @@ header {
   border-radius: var(--radius);
 }
 .avg-time-window {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -652,14 +651,14 @@ header {
 }
 .avg-time-val {
   font-family: 'Syne', sans-serif;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--gold);
   line-height: 1;
 }
 .avg-time-std {
   font-family: 'Syne', sans-serif;
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-dim);
   line-height: 1;
