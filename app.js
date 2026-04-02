@@ -1959,6 +1959,9 @@ function clearStats() {
   Object.keys(chordWeights).forEach(k => delete chordWeights[k]);
   pBests.fastestSec = Infinity; pBests.longestStreak = 0;
   milestonesHit.clear();
+  // Reset current card timer so the pre-clear time isn't counted
+  state.cardShownAt = performance.now();
+  if (state.pausedAt !== null) state.pausedAt = performance.now();
   clearTiming();
   updateStatsUI();
   saveStats();
@@ -1991,6 +1994,8 @@ function renderDisplay(item, animate = true) {
   wrongCountedMidi  = false;
   waitingForRelease = heldMidiNotes.size > 0;
   if (waitingForRelease) dbg('new card — carry-over notes held, waiting for release');
+  // Clear stale MIDI note display immediately so previous chord's notes don't linger
+  if (midiNoteDisplay) midiNoteDisplay.textContent = '';
   if (earHintTimer) { clearTimeout(earHintTimer); earHintTimer = null; }
   state.current = item;
   state.cardShownAt = performance.now();
