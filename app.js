@@ -585,28 +585,52 @@ function getMicThreshold() {
 function detectPitch(floatData, sampleRate) {
   const n = floatData.length, half = Math.floor(n / 2);
 
+  // Noise gate — RMS check on raw signal
   let rms = 0;
   for (let i = 0; i < n; i++) rms += floatData[i] * floatData[i];
   rms = Math.sqrt(rms / n);
   if (rms < getMicThreshold()) return null;
 
+  // Apply Hann window to reduce spectral leakage
+  const windowed = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    windowed[i] = floatData[i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1)));
+  }
+
+  // Autocorrelation
   const corr = new Float32Array(half);
   for (let lag = 0; lag < half; lag++) {
     let sum = 0;
-    for (let i = 0; i < half; i++) sum += floatData[i] * floatData[i + lag];
+    for (let i = 0; i < half; i++) sum += windowed[i] * windowed[i + lag];
     corr[lag] = sum;
   }
 
+  // Find the first dip (end of the initial positive slope)
   let start = 1;
   while (start < half - 1 && corr[start] > corr[start + 1]) start++;
 
-  let bestLag = start, bestVal = -Infinity;
+  // Find global maximum after the first dip (needed for threshold)
+  let globalMax = -Infinity;
   for (let i = start; i < half; i++) {
-    if (corr[i] > bestVal) { bestVal = corr[i]; bestLag = i; }
+    if (corr[i] > globalMax) globalMax = corr[i];
   }
 
-  if (bestVal / corr[0] < 0.35) return null;
+  // Voicing check — reject if the best peak is too weak relative to DC
+  if (globalMax / corr[0] < 0.20) return null;
 
+  // Prefer the fundamental: accept the *first* peak that reaches 80% of the
+  // global maximum. This avoids locking onto a stronger harmonic (shorter lag)
+  // when the fundamental (longer lag) is present but slightly weaker.
+  const threshold = globalMax * 0.80;
+  let bestLag = start;
+  for (let i = start; i < half - 1; i++) {
+    if (corr[i] >= threshold && corr[i] >= corr[i - 1] && corr[i] >= corr[i + 1]) {
+      bestLag = i;
+      break;
+    }
+  }
+
+  // Parabolic interpolation for sub-sample accuracy
   const x0    = bestLag > 0       ? corr[bestLag - 1] : corr[bestLag];
   const x2    = bestLag < half - 1 ? corr[bestLag + 1] : corr[bestLag];
   const denom = 2 * (2 * corr[bestLag] - x0 - x2);
@@ -642,7 +666,7 @@ function expectedChromaSet() {
 function evaluateAudio(floatData, byteFreqData, sampleRate, fftSize) {
   if (state.mode === 'note') {
     const freq = detectPitch(floatData, sampleRate);
-    if (freq === null) return { result: 'neutral', detected: null };
+    if (freq === null || freq < 60 || freq > 1500) return { result: 'neutral', detected: null };
     const midi        = 12 * Math.log2(freq / 440) + 69;
     const detectedSt  = ((Math.round(midi) % 12) + 12) % 12;
     const detectedName = SEMITONE_NAMES[detectedSt];
@@ -743,7 +767,10 @@ function stopAudioPipeline() {
 
 async function startMic() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      video: false,
+    });
     startAudioPipeline(stream);
     state.micActive = true;
     micBtn.classList.add('active-input');
