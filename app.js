@@ -585,56 +585,28 @@ function getMicThreshold() {
 function detectPitch(floatData, sampleRate) {
   const n = floatData.length, half = Math.floor(n / 2);
 
-  // Noise gate — RMS check on raw signal
   let rms = 0;
   for (let i = 0; i < n; i++) rms += floatData[i] * floatData[i];
   rms = Math.sqrt(rms / n);
   if (rms < getMicThreshold()) return null;
 
-  // Apply Hann window to reduce spectral leakage
-  const windowed = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    windowed[i] = floatData[i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1)));
-  }
-
-  // Autocorrelation
   const corr = new Float32Array(half);
   for (let lag = 0; lag < half; lag++) {
     let sum = 0;
-    for (let i = 0; i < half; i++) sum += windowed[i] * windowed[i + lag];
+    for (let i = 0; i < half; i++) sum += floatData[i] * floatData[i + lag];
     corr[lag] = sum;
   }
 
-  // Find the first dip (end of the initial positive slope)
   let start = 1;
   while (start < half - 1 && corr[start] > corr[start + 1]) start++;
 
-  // Find global maximum after the first dip (needed for threshold)
-  let globalMax = -Infinity;
+  let bestLag = start, bestVal = -Infinity;
   for (let i = start; i < half; i++) {
-    if (corr[i] > globalMax) globalMax = corr[i];
+    if (corr[i] > bestVal) { bestVal = corr[i]; bestLag = i; }
   }
 
-  // Voicing check — reject if the best peak is too weak relative to DC
-  if (globalMax / corr[0] < 0.20) return null;
+  if (bestVal / corr[0] < 0.35) return null;
 
-  // Prefer the fundamental: find the global-max lag, then check if an earlier
-  // peak reaches 60% of that maximum — if so, prefer it (likely the fundamental
-  // rather than a harmonic). Falls back to the global max if nothing qualifies.
-  let globalLag = start;
-  for (let i = start; i < half; i++) {
-    if (corr[i] > corr[globalLag]) globalLag = i;
-  }
-  const threshold = globalMax * 0.60;
-  let bestLag = globalLag; // default: strongest peak
-  for (let i = start; i < globalLag; i++) {
-    if (corr[i] >= threshold && corr[i] >= corr[Math.max(0, i - 1)] && corr[i] >= corr[i + 1]) {
-      bestLag = i;
-      break;
-    }
-  }
-
-  // Parabolic interpolation for sub-sample accuracy
   const x0    = bestLag > 0       ? corr[bestLag - 1] : corr[bestLag];
   const x2    = bestLag < half - 1 ? corr[bestLag + 1] : corr[bestLag];
   const denom = 2 * (2 * corr[bestLag] - x0 - x2);
