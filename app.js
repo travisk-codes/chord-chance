@@ -582,36 +582,64 @@ function getMicThreshold() {
   return 0.002 + (10 - state.micSensitivity) * 0.002;
 }
 
-function detectPitch(floatData, sampleRate) {
-  const n = floatData.length, half = Math.floor(n / 2);
+// ── YIN pitch detection ────────────────────────────────────────────────────
+// Reference: de Cheveigné & Kawahara, "YIN, a fundamental frequency estimator
+// for speech and music", JASA 2002.  Only the core steps are used here:
+//   1. Difference function  d(τ)
+//   2. Cumulative mean normalised difference  d'(τ)
+//   3. Absolute threshold  (first dip below threshold)
+//   4. Parabolic interpolation around the chosen lag
 
+function detectPitch(floatData, sampleRate) {
+  const n = floatData.length;
+  const half = Math.floor(n / 2);
+
+  // RMS noise gate on raw signal
   let rms = 0;
   for (let i = 0; i < n; i++) rms += floatData[i] * floatData[i];
   rms = Math.sqrt(rms / n);
   if (rms < getMicThreshold()) return null;
 
-  const corr = new Float32Array(half);
-  for (let lag = 0; lag < half; lag++) {
+  // Step 1 – difference function
+  const d = new Float32Array(half);
+  for (let tau = 0; tau < half; tau++) {
     let sum = 0;
-    for (let i = 0; i < half; i++) sum += floatData[i] * floatData[i + lag];
-    corr[lag] = sum;
+    for (let i = 0; i < half; i++) {
+      const delta = floatData[i] - floatData[i + tau];
+      sum += delta * delta;
+    }
+    d[tau] = sum;
   }
 
-  let start = 1;
-  while (start < half - 1 && corr[start] > corr[start + 1]) start++;
-
-  let bestLag = start, bestVal = -Infinity;
-  for (let i = start; i < half; i++) {
-    if (corr[i] > bestVal) { bestVal = corr[i]; bestLag = i; }
+  // Step 2 – cumulative mean normalised difference
+  const dn = new Float32Array(half);
+  dn[0] = 1;
+  let running = 0;
+  for (let tau = 1; tau < half; tau++) {
+    running += d[tau];
+    dn[tau] = d[tau] * tau / running;
   }
 
-  if (bestVal / corr[0] < 0.35) return null;
+  // Step 3 – absolute threshold: find first tau where dn drops below threshold
+  const YIN_THRESHOLD = 0.15;
+  let tau = 2; // skip lags 0 and 1
+  while (tau < half - 1) {
+    if (dn[tau] < YIN_THRESHOLD) {
+      // Walk past this dip to find the local minimum
+      while (tau + 1 < half - 1 && dn[tau + 1] < dn[tau]) tau++;
+      break;
+    }
+    tau++;
+  }
+  if (tau >= half - 1) return null; // no periodic signal found
 
-  const x0    = bestLag > 0       ? corr[bestLag - 1] : corr[bestLag];
-  const x2    = bestLag < half - 1 ? corr[bestLag + 1] : corr[bestLag];
-  const denom = 2 * (2 * corr[bestLag] - x0 - x2);
-  const refinedLag = bestLag + (denom !== 0 ? (x2 - x0) / denom : 0);
-  return sampleRate / refinedLag;
+  // Step 4 – parabolic interpolation for sub-sample accuracy
+  const x0 = tau > 0 ? dn[tau - 1] : dn[tau];
+  const x2 = tau < half - 1 ? dn[tau + 1] : dn[tau];
+  const denom = 2 * (2 * dn[tau] - x0 - x2);
+  const refined = tau + (denom !== 0 ? (x0 - x2) / denom : 0);
+
+  return sampleRate / refined;
 }
 
 function buildChroma(freqData, sampleRate, fftSize) {
