@@ -208,7 +208,7 @@ header {
 
 /* Icon buttons (theme + settings) */
 .icon-btn {
-  width: 36px; height: 36px;
+  width: 31px; height: 31px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 50%;
@@ -219,7 +219,7 @@ header {
   flex-shrink: 0;
 }
 .icon-btn:hover { border-color: var(--gold); color: var(--gold); }
-.icon-btn svg { width: 15px; height: 15px; }
+.icon-btn svg { width: 13px; height: 13px; }
 
 /* ── MAIN STAGE ── */
 .stage {
