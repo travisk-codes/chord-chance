@@ -695,8 +695,7 @@ function startAudioPipeline(stream) {
 
     const { result, detected } = evaluateAudio(floatData, byteFreqData, state.audioCtx.sampleRate, FFT_SIZE);
     if (!state.earMode) {
-      if (result === lastResult) {
-        lastDetected = detected;
+      if (result === lastResult && detected === lastDetected) {
         sameCount++;
         if (sameCount >= CONFIRM) {
           if (result === 'correct' && state.feedbackState !== 'correct') {
@@ -717,8 +716,9 @@ function startAudioPipeline(stream) {
         }
       } else {
         if (pendingCorrectTimer) { clearTimeout(pendingCorrectTimer); pendingCorrectTimer = null; }
-        lastResult = result;
-        sameCount  = 0;
+        lastResult   = result;
+        lastDetected = detected;
+        sameCount    = 0;
       }
     } else {
       if (pendingCorrectTimer) { clearTimeout(pendingCorrectTimer); pendingCorrectTimer = null; }
