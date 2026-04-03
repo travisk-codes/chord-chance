@@ -18,7 +18,7 @@
 
 <header>
   <div class="logo-wrap">
-    <div class="logo">Chord Chance<span class="app-version">v4.2.0</span></div>
+    <div class="logo">Chord Chance<span class="app-version">v4.2.1</span></div>
     <div id="sessionStatus" class="session-status">⏸ 0:00</div>
   </div>
   <div class="header-right">
@@ -450,17 +450,20 @@
           </div>
         </div>
         <div class="clear-row" style="margin-top:10px">
-          <span class="clear-row-label">Running avg</span>
-          <button class="clear-timing-btn" id="clearTimingBtn" title="Clear running average data">clear</button>
+          <span class="clear-row-label">Averages</span>
+          <button class="clear-timing-btn" id="clearAvgVisBtn" title="Reset averages display">clear</button>
+          <button class="clear-timing-btn del" id="delAvgBtn" title="Delete average data permanently">delete</button>
         </div>
       </div>
       <div class="clear-row" style="margin-top:6px">
-        <span class="clear-row-label">Speed rankings</span>
-        <button class="clear-timing-btn" id="clearSpeedBtn" title="Clear speed ranking data">clear</button>
+        <span class="clear-row-label">Speed rank</span>
+        <button class="clear-timing-btn" id="clearSpeedVisBtn" title="Reset speed ranking display">clear</button>
+        <button class="clear-timing-btn del" id="delSpeedBtn" title="Delete speed data permanently">delete</button>
       </div>
       <div class="clear-row" style="margin-top:4px">
-        <span class="clear-row-label">Accuracy rankings</span>
-        <button class="clear-timing-btn" id="clearAccBtn" title="Clear accuracy ranking data">clear</button>
+        <span class="clear-row-label">Accuracy rank</span>
+        <button class="clear-timing-btn" id="clearAccVisBtn" title="Reset accuracy ranking display">clear</button>
+        <button class="clear-timing-btn del" id="delAccBtn" title="Delete accuracy data permanently">delete</button>
       </div>
       <div class="clear-row" style="margin-top:4px">
         <span class="clear-row-label">Note scores</span>

@@ -196,6 +196,12 @@ const CHART_WINDOWS = [
 let chartWindowKey = '5m'; // which window the smoothed line represents
 let cachedWindowStats = {}; // { [key]: { avg, std } } — frozen snapshot while paused
 
+// Visual-clear cutoffs: entries with ts < cutoff are excluded from display only (data preserved)
+let avgClearTs = 0;
+let speedClearTs = 0;
+// Accuracy visual-clear: snapshot of {c,w} at clear time; display shows delta since snapshot
+let accSnapshot = {}; // { [key]: { c, w } }
+
 const noteWeights = {};
 const chordWeights = {};
 const noteStats = {};
@@ -1603,13 +1609,15 @@ function updateStatsUI() {
 
 function windowAvg(ms) {
   const ref = state.pausedWallClock ?? Date.now();
-  const entries = ms !== null ? timingEntries.filter(e => e.ts >= ref - ms) : timingEntries;
+  const visible = timingEntries.filter(e => e.ts >= avgClearTs);
+  const entries = ms !== null ? visible.filter(e => e.ts >= ref - ms) : visible;
   return entries.length ? entries.reduce((s, e) => s + e.sec, 0) / entries.length : null;
 }
 
 function windowStd(ms) {
   const ref = state.pausedWallClock ?? Date.now();
-  const entries = ms !== null ? timingEntries.filter(e => e.ts >= ref - ms) : timingEntries;
+  const visible = timingEntries.filter(e => e.ts >= avgClearTs);
+  const entries = ms !== null ? visible.filter(e => e.ts >= ref - ms) : visible;
   if (entries.length < 2) return null;
   return stdDev(entries.map(e => e.sec));
 }
@@ -1764,7 +1772,8 @@ function renderTimingChart(force) {
   if (!wrap) return;
   // While paused, freeze the chart so short windows don't vanish
   if (!state.playing && !force) return;
-  if (!state.showAvgTime || timingEntries.length < 2) {
+  const visibleEntries = timingEntries.filter(e => e.ts >= avgClearTs);
+  if (!state.showAvgTime || visibleEntries.length < 2) {
     wrap.style.display = 'none';
     return;
   }
@@ -1777,14 +1786,14 @@ function renderTimingChart(force) {
 
   // Compute smoothed line + variance using the selected time window
   const winMs    = CHART_WINDOWS.find(w => w.key === chartWindowKey)?.ms ?? 300_000;
-  const smoothed = computeSmoothed(timingEntries, winMs);
+  const smoothed = computeSmoothed(visibleEntries, winMs);
   const smooth   = smoothed.map(s => s.avg);
   const stds     = smoothed.map(s => s.std);
 
   const n    = smooth.length;
   // Y-range must accommodate raw dots and the full variance band
-  const minY = Math.min(...smooth.map((v, i) => v - stds[i]), ...timingEntries.map(e => e.sec));
-  const maxY = Math.max(...smooth.map((v, i) => v + stds[i]), ...timingEntries.map(e => e.sec));
+  const minY = Math.min(...smooth.map((v, i) => v - stds[i]), ...visibleEntries.map(e => e.sec));
+  const maxY = Math.max(...smooth.map((v, i) => v + stds[i]), ...visibleEntries.map(e => e.sec));
   const rY   = Math.max(maxY - minY, 0.5);
 
   const px = i => (PL + (i / Math.max(n - 1, 1)) * cW).toFixed(2);
@@ -1817,7 +1826,7 @@ function renderTimingChart(force) {
   bandPath += ' Z';
 
   // Raw dots
-  const dots = timingEntries.map((e, i) =>
+  const dots = visibleEntries.map((e, i) =>
     `<circle cx="${px(i)}" cy="${py(e.sec)}" r="3" fill="${col}" opacity="0.22" vector-effect="non-scaling-stroke"/>`
   ).join('');
 
@@ -1860,12 +1869,14 @@ function renderChordRanking() {
   if (state.mode === 'note') {
     // Note mode: rank by note name
     const ranked = Object.entries(noteTimings)
-      .filter(([, entries]) => entries.length)
       .map(([key, entries]) => {
-        const avg = entries.reduce((s, e) => s + e.sec, 0) / entries.length;
+        const vis = entries.filter(e => e.ts >= speedClearTs);
+        if (!vis.length) return null;
+        const avg = vis.reduce((s, e) => s + e.sec, 0) / vis.length;
         const display = key.replace('#', '♯').replace('b', '♭');
         return { key, display, avg };
       })
+      .filter(Boolean)
       .sort((a, b) => a.avg - b.avg);
     if (!ranked.length) { el.style.display = 'none'; return; }
     el.style.display = '';
@@ -1882,9 +1893,10 @@ function renderChordRanking() {
 
   // Chord mode: rank by full card (root+acc|chordVal|inversion)
   const ranked = Object.entries(cardTimings)
-    .filter(([, entries]) => entries.length)
     .map(([key, entries]) => {
-      const avg = entries.reduce((s, e) => s + e.sec, 0) / entries.length;
+      const vis = entries.filter(e => e.ts >= speedClearTs);
+      if (!vis.length) return null;
+      const avg = vis.reduce((s, e) => s + e.sec, 0) / vis.length;
       const [rootAcc, chordVal, invStr] = key.split('|');
       const ct = CHORD_TYPES.find(c => c.val === chordVal);
       const inv = parseInt(invStr, 10);
@@ -1893,6 +1905,7 @@ function renderChordRanking() {
       const display = `${rootDisplay} ${ct ? ct.symbol : chordVal}${invSuffix}`;
       return { key, display, avg };
     })
+    .filter(Boolean)
     .sort((a, b) => a.avg - b.avg);
 
   if (!ranked.length) { el.style.display = 'none'; return; }
@@ -1915,27 +1928,37 @@ function renderAccuracyRanking() {
   if (!el) return;
   if (state.mode === 'ear') { el.style.display = 'none'; return; }
 
+  // Helper: get visible {c,w} after subtracting the snapshot baseline
+  function visAcc(key, s) {
+    const snap = accSnapshot[key] || { c: 0, w: 0 };
+    return { c: s.c - snap.c, w: s.w - snap.w };
+  }
+
   let ranked;
   if (state.mode === 'note') {
     ranked = Object.entries(noteStats)
-      .filter(([, s]) => s.c + s.w >= 1)
-      .map(([key, s]) => ({
-        key,
-        display: key.replace('#', '♯').replace('b', '♭'),
-        acc: s.c / (s.c + s.w),
-      }))
+      .map(([key, s]) => {
+        const v = visAcc(key, s);
+        const total = v.c + v.w;
+        if (total < 1) return null;
+        return { key, display: key.replace('#', '♯').replace('b', '♭'), acc: v.c / total };
+      })
+      .filter(Boolean)
       .sort((a, b) => b.acc - a.acc);
   } else {
     ranked = Object.entries(cardAccStats)
-      .filter(([, s]) => s.c + s.w >= 1)
       .map(([key, s]) => {
+        const v = visAcc(key, s);
+        const total = v.c + v.w;
+        if (total < 1) return null;
         const [rootAcc, chordVal, invStr] = key.split('|');
         const ct  = CHORD_TYPES.find(c => c.val === chordVal);
         const inv = parseInt(invStr, 10);
         const rootDisplay = rootAcc.replace('#', '♯').replace('b', '♭');
         const invSuffix   = inv > 0 ? ` ${inv}` : '';
-        return { key, display: `${rootDisplay} ${ct ? ct.symbol : chordVal}${invSuffix}`, acc: s.c / (s.c + s.w) };
+        return { key, display: `${rootDisplay} ${ct ? ct.symbol : chordVal}${invSuffix}`, acc: v.c / total };
       })
+      .filter(Boolean)
       .sort((a, b) => b.acc - a.acc);
   }
 
@@ -1957,32 +1980,64 @@ function renderAccuracyRanking() {
     ).join('');
 }
 
-function clearRunningAvg() {
+// ── Visual clears (reset display, keep data) ──
+
+function clearAvgVisual() {
+  avgClearTs = Date.now();
+  cachedWindowStats = {};
+  updateAvgTimeUI(true);
+  renderTimingChart(true);
+}
+
+function clearSpeedVisual() {
+  speedClearTs = Date.now();
+  renderChordRanking();
+}
+
+function clearAccVisual() {
+  // Snapshot current totals so display shows only the delta going forward
+  accSnapshot = {};
+  for (const [k, s] of Object.entries(state.mode === 'note' ? noteStats : cardAccStats)) {
+    accSnapshot[k] = { c: s.c, w: s.w };
+  }
+  // Also snapshot the other source so mode-switching stays consistent
+  for (const [k, s] of Object.entries(state.mode === 'note' ? cardAccStats : noteStats)) {
+    accSnapshot[k] = { c: s.c, w: s.w };
+  }
+  renderAccuracyRanking();
+}
+
+// ── Data deletes (permanently remove stored data) ──
+
+function deleteAvgData() {
   timingEntries.length = 0;
   Object.keys(noteTimings).forEach(k => delete noteTimings[k]);
+  avgClearTs = 0;
   cachedWindowStats = {};
   updateAvgTimeUI(true);
   renderTimingChart(true);
   saveStats();
 }
 
-function clearSpeedRanking() {
+function deleteSpeedData() {
   Object.keys(cardTimings).forEach(k => delete cardTimings[k]);
   Object.keys(chordTypeTimings).forEach(k => delete chordTypeTimings[k]);
+  speedClearTs = 0;
   renderChordRanking();
   saveStats();
 }
 
-function clearAccuracyRanking() {
+function deleteAccData() {
   Object.keys(cardAccStats).forEach(k => delete cardAccStats[k]);
+  accSnapshot = {};
   renderAccuracyRanking();
   saveStats();
 }
 
 function clearTiming() {
-  clearRunningAvg();
-  clearSpeedRanking();
-  clearAccuracyRanking();
+  deleteAvgData();
+  deleteSpeedData();
+  deleteAccData();
 }
 
 function clearModeStats(mode) {
@@ -2674,12 +2729,20 @@ const clearNoteStatsBtn = document.getElementById('clearNoteStatsBtn');
 if (clearNoteStatsBtn) clearNoteStatsBtn.addEventListener('click', () => clearModeStats('note'));
 const clearChordStatsBtn = document.getElementById('clearChordStatsBtn');
 if (clearChordStatsBtn) clearChordStatsBtn.addEventListener('click', () => clearModeStats('chord'));
-const clearTimingBtn = document.getElementById('clearTimingBtn');
-if (clearTimingBtn) clearTimingBtn.addEventListener('click', clearRunningAvg);
-const clearSpeedBtn = document.getElementById('clearSpeedBtn');
-if (clearSpeedBtn) clearSpeedBtn.addEventListener('click', clearSpeedRanking);
-const clearAccBtn = document.getElementById('clearAccBtn');
-if (clearAccBtn) clearAccBtn.addEventListener('click', clearAccuracyRanking);
+// Visual clear buttons
+const clearAvgVisBtn = document.getElementById('clearAvgVisBtn');
+if (clearAvgVisBtn) clearAvgVisBtn.addEventListener('click', clearAvgVisual);
+const clearSpeedVisBtn = document.getElementById('clearSpeedVisBtn');
+if (clearSpeedVisBtn) clearSpeedVisBtn.addEventListener('click', clearSpeedVisual);
+const clearAccVisBtn = document.getElementById('clearAccVisBtn');
+if (clearAccVisBtn) clearAccVisBtn.addEventListener('click', clearAccVisual);
+// Data delete buttons
+const delAvgBtn = document.getElementById('delAvgBtn');
+if (delAvgBtn) delAvgBtn.addEventListener('click', deleteAvgData);
+const delSpeedBtn = document.getElementById('delSpeedBtn');
+if (delSpeedBtn) delSpeedBtn.addEventListener('click', deleteSpeedData);
+const delAccBtn = document.getElementById('delAccBtn');
+if (delAccBtn) delAccBtn.addEventListener('click', deleteAccData);
 if (summaryBtn) summaryBtn.addEventListener('click', openSummary);
 if (summaryOverlay) summaryOverlay.addEventListener('click', closeSummary);
 const closeSummaryBtn = document.getElementById('closeSummary');
