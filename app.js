@@ -618,13 +618,17 @@ function detectPitch(floatData, sampleRate) {
   // Voicing check — reject if the best peak is too weak relative to DC
   if (globalMax / corr[0] < 0.20) return null;
 
-  // Prefer the fundamental: accept the *first* peak that reaches 80% of the
-  // global maximum. This avoids locking onto a stronger harmonic (shorter lag)
-  // when the fundamental (longer lag) is present but slightly weaker.
-  const threshold = globalMax * 0.80;
-  let bestLag = start;
-  for (let i = start; i < half - 1; i++) {
-    if (corr[i] >= threshold && corr[i] >= corr[i - 1] && corr[i] >= corr[i + 1]) {
+  // Prefer the fundamental: find the global-max lag, then check if an earlier
+  // peak reaches 60% of that maximum — if so, prefer it (likely the fundamental
+  // rather than a harmonic). Falls back to the global max if nothing qualifies.
+  let globalLag = start;
+  for (let i = start; i < half; i++) {
+    if (corr[i] > corr[globalLag]) globalLag = i;
+  }
+  const threshold = globalMax * 0.60;
+  let bestLag = globalLag; // default: strongest peak
+  for (let i = start; i < globalLag; i++) {
+    if (corr[i] >= threshold && corr[i] >= corr[Math.max(0, i - 1)] && corr[i] >= corr[i + 1]) {
       bestLag = i;
       break;
     }
