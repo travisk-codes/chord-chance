@@ -642,7 +642,7 @@ function expectedChromaSet() {
 function evaluateAudio(floatData, byteFreqData, sampleRate, fftSize) {
   if (state.mode === 'note') {
     const freq = detectPitch(floatData, sampleRate);
-    if (freq === null || freq < 60 || freq > 1500) return { result: 'neutral', detected: null };
+    if (freq === null) return { result: 'neutral', detected: null };
     const midi        = 12 * Math.log2(freq / 440) + 69;
     const detectedSt  = ((Math.round(midi) % 12) + 12) % 12;
     const detectedName = SEMITONE_NAMES[detectedSt];
@@ -743,10 +743,7 @@ function stopAudioPipeline() {
 
 async function startMic() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-      video: false,
-    });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     startAudioPipeline(stream);
     state.micActive = true;
     micBtn.classList.add('active-input');
