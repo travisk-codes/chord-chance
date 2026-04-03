@@ -167,7 +167,7 @@ const pBests = { fastestSec: Infinity, longestStreak: 0 };
 const milestonesHit = new Set(); // keys like "c100", "s20" — each fires only once
 
 // Session clock — tracks total elapsed wall time since page load
-const SESSION_START_WALL = Date.now();
+let SESSION_START_WALL = Date.now();
 let sessionPausedMs = 0;       // total ms spent paused so far
 let sessionPauseStart = Date.now(); // app starts paused; setPlaying(true) clears this
 // NOTE: state.pausedAt is initialised after DOM-ready init below (search "app starts paused")
@@ -1732,6 +1732,12 @@ function updateSessionStatusUI() {
 }
 setInterval(updateSessionStatusUI, 1000);
 
+document.getElementById('sessionResetBtn').addEventListener('click', () => {
+  SESSION_START_WALL = Date.now();
+  sessionPausedMs = 0;
+  sessionPauseStart = state.playing ? null : Date.now();
+  updateSessionStatusUI();
+});
 
 function renderTimingChart(force) {
   const wrap = document.getElementById('timingChartWrap');
@@ -1837,13 +1843,15 @@ function renderChordRanking() {
     if (!ranked.length) { el.style.display = 'none'; return; }
     el.style.display = '';
     const curKey = state.current.root + state.current.acc;
-    el.innerHTML = ranked.map(({ key, display, avg }, i) =>
-      `<div class="cr-row${key === curKey ? ' cr-current' : ''}">` +
-      `<span class="cr-rank">${i + 1}</span>` +
-      `<span class="cr-name">${display}</span>` +
-      `<span class="cr-time">${avg.toFixed(1)}s</span>` +
-      `</div>`
-    ).join('');
+    el.innerHTML =
+      `<div class="cr-title">speed</div>` +
+      ranked.map(({ key, display, avg }, i) =>
+        `<div class="cr-row${key === curKey ? ' cr-current' : ''}">` +
+        `<span class="cr-rank">${i + 1}</span>` +
+        `<span class="cr-name">${display}</span>` +
+        `<span class="cr-time">${avg.toFixed(1)}s</span>` +
+        `</div>`
+      ).join('');
     return;
   }
 

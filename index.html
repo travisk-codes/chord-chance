@@ -18,8 +18,11 @@
 
 <header>
   <div class="logo-wrap">
-    <div class="logo">Chord Chance<span class="app-version">v4.1.6</span></div>
-    <div id="sessionStatus" class="session-status">⏸ 0:00</div>
+    <div class="logo">Chord Chance<span class="app-version">v4.3.1</span></div>
+    <div class="session-row">
+      <div id="sessionStatus" class="session-status">⏸ 0:00</div>
+      <button class="session-reset-btn" id="sessionResetBtn" title="Reset timer">↺</button>
+    </div>
   </div>
   <div class="header-right">
     <div class="mode-pill">
@@ -28,6 +31,11 @@
       <button class="mode-btn" data-mode="ear">Ear</button>
     </div>
     <div class="header-icons">
+      <div class="icon-btn" id="musicBtn" title="Music Settings">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+        </svg>
+      </div>
       <div class="icon-btn" id="themeBtn" title="Toggle theme">
         <svg class="icon-dark" viewBox="0 0 24 24" fill="currentColor">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -40,20 +48,15 @@
           <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
         </svg>
       </div>
+      <div class="icon-btn" id="statsBtn" title="Stats">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M5 9h3v11H5zm6-5h3v16h-3zm6 8h3v8h-3z"/>
+        </svg>
+      </div>
       <div class="icon-btn" id="settingsBtn" title="App Settings (S)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg>
-      </div>
-      <div class="icon-btn" id="musicBtn" title="Music Settings">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-        </svg>
-      </div>
-      <div class="icon-btn" id="statsBtn" title="Stats">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M5 9h3v11H5zm6-5h3v16h-3zm6 8h3v8h-3z"/>
         </svg>
       </div>
     </div>
@@ -126,7 +129,6 @@
   <div class="audio-bar" id="audioBar"></div>
 </div>
 
-<div class="tap-hint">tap card or swipe to advance</div>
 
 <div class="progress-wrap">
   <div class="progress-bar" id="progressBar"></div>
