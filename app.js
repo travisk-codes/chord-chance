@@ -367,9 +367,18 @@ function weightedRandom(arr, keyFn, weightMap) {
   return arr[arr.length - 1];
 }
 
-function isWeak(key, statMap) {
-  const s = statMap[key];
-  return s && (s.c + s.w) >= 3 && s.c / (s.c + s.w) < 0.6;
+function isWeak(key, statMap, timingMap) {
+  const accuracyWeak = (() => {
+    const s = statMap[key];
+    return s && (s.c + s.w) >= 3 && s.c / (s.c + s.w) < 0.6;
+  })();
+  if (accuracyWeak) return true;
+  // Also weak if average time is ≥ 1.5× the global average
+  const avg = keyAvgTime(key, timingMap);
+  if (avg === null) return false;
+  const global = windowAvg(null);
+  if (!global) return false;
+  return avg >= global * 1.5;
 }
 
 // ─── TIMING HELPERS ────────────────────────────────────────────────────────
@@ -408,10 +417,10 @@ function nextItem(avoidCurrent = true) {
   const fullChordPool = chordPool;
 
   if (state.weakSpotsOnly) {
-    const weakNotes = pool.filter(item => isWeak(item.root + item.acc, noteStats));
+    const weakNotes = pool.filter(item => isWeak(item.root + item.acc, noteStats, noteTimings));
     if (weakNotes.length) pool = weakNotes;
     if (state.mode === 'chord') {
-      const weakChords = chordPool.filter(v => isWeak(v, chordStats));
+      const weakChords = chordPool.filter(v => isWeak(v, chordStats, chordTypeTimings));
       if (weakChords.length) chordPool = weakChords;
     }
   }
