@@ -101,6 +101,10 @@ const NOTE_TO_SEMITONE = {
 
 const SEMITONE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
+// Staff notation: pitch-class → [diatonicStep, accidental] (sharp vs flat spelling)
+const PC_SHARP = [[0,''],[0,'♯'],[1,''],[1,'♯'],[2,''],[3,''],[3,'♯'],[4,''],[4,'♯'],[5,''],[5,'♯'],[6,'']];
+const PC_FLAT  = [[0,''],[1,'♭'],[1,''],[2,'♭'],[2,''],[3,''],[4,'♭'],[4,''],[5,'♭'],[5,''],[6,'♭'],[6,'']];
+
 // Interval semitone → display name
 const INTERVAL_LABEL = {
   0:'1', 2:'2', 3:'♭3', 4:'3', 5:'4', 6:'♭5',
@@ -148,6 +152,7 @@ const state = {
   pausedWallClock: null, // Date.now() snapshot taken at pause — freezes window avg reference
   twoHandMode: false,
   showMidiNotes: true,
+  showStaff: true,
 };
 
 function anyInputActive() {
@@ -284,6 +289,7 @@ function saveSettings() {
       untimedMode:          state.untimedMode,
       twoHandMode:          state.twoHandMode,
       showMidiNotes:        state.showMidiNotes,
+      showStaff:            state.showStaff,
     }));
   } catch(e) {}
 }
@@ -314,6 +320,7 @@ function loadSettings() {
     if (typeof s.untimedMode === 'boolean')   state.untimedMode   = s.untimedMode;
     if (typeof s.twoHandMode === 'boolean')   state.twoHandMode   = s.twoHandMode;
     if (typeof s.showMidiNotes === 'boolean') state.showMidiNotes = s.showMidiNotes;
+    if (typeof s.showStaff === 'boolean') state.showStaff = s.showStaff;
   } catch(e) {}
 }
 
@@ -1123,6 +1130,7 @@ const statWrong         = document.getElementById('statWrong');
 const statBest          = document.getElementById('statBest');
 const statAccuracy      = document.getElementById('statAccuracy');
 const pianoDisplay      = document.getElementById('pianoDisplay');
+const staffDisplay      = document.getElementById('staffDisplay');
 const invDisplay        = document.getElementById('invDisplay');
 const midiNoteDisplay   = document.getElementById('midiNoteDisplay');
 const midiLowSlider     = document.getElementById('midiLowSlider');
@@ -1195,6 +1203,108 @@ function getVoicingMidi(rootPC, intervals, inversion) {
 }
 
 const INV_LABELS = ['Root pos.', '1st inv.', '2nd inv.', '3rd inv.'];
+
+// ─── STAFF NOTATION ───────────────────────────────────────────────────────
+
+function midiToStaff(midi, useFlatSpelling) {
+  const pc = midi % 12;
+  const octave = Math.floor(midi / 12) - 1;
+  const table = useFlatSpelling ? PC_FLAT : PC_SHARP;
+  const [diatonic, acc] = table[pc];
+  const pos = (octave - 4) * 7 + diatonic; // 0 = C4 (middle C)
+  return { pos, acc };
+}
+
+function buildStaffSVG(midiNotes, item) {
+  // Staff geometry
+  const W = 90, H = 70;
+  const STEP = 5;          // px per diatonic half-step
+  const STAFF_BOTTOM = 45; // y of bottom line (E4, pos=2)
+  // Staff lines: E4(pos 2), G4(4), B4(6), D5(8), F5(10)
+  const STAFF_LINES = [2, 4, 6, 8, 10];
+  const posToY = pos => STAFF_BOTTOM - (pos - 2) * (STEP / 2);
+
+  const useFlatSpelling = item.acc === 'b';
+  const notes = midiNotes.map(m => ({ midi: m, ...midiToStaff(m, useFlatSpelling) }))
+    .sort((a, b) => a.pos - b.pos);
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block">`;
+
+  // Staff lines
+  for (const lp of STAFF_LINES) {
+    const y = posToY(lp);
+    svg += `<line x1="8" y1="${y}" x2="${W - 4}" y2="${y}" stroke="var(--text-dim)" stroke-width="0.5" opacity="0.5"/>`;
+  }
+
+  // Treble clef (Unicode)
+  const clefY = posToY(4) + 10;
+  svg += `<text x="9" y="${clefY}" font-size="32" fill="var(--text-dim)" opacity="0.6" font-family="serif">𝄞</text>`;
+
+  // Note heads + accidentals + ledger lines
+  const NX = 55;      // base x for note heads
+  const RX = 5, RY = 3.5; // ellipse radii
+
+  // Detect seconds (adjacent diatonic positions) for horizontal offset
+  const offsets = notes.map(() => 0);
+  for (let i = 1; i < notes.length; i++) {
+    if (notes[i].pos - notes[i - 1].pos === 1) {
+      offsets[i] = offsets[i - 1] === 0 ? 10 : 0;
+    }
+  }
+
+  for (let i = 0; i < notes.length; i++) {
+    const { pos, acc } = notes[i];
+    const y = posToY(pos);
+    const nx = NX + offsets[i];
+
+    // Ledger lines
+    if (pos <= 0) {
+      // C4 and below — draw ledger lines at each even position from 0 down
+      for (let lp = 0; lp >= pos; lp -= 2) {
+        const ly = posToY(lp);
+        svg += `<line x1="${nx - 8}" y1="${ly}" x2="${nx + 8}" y2="${ly}" stroke="var(--text-dim)" stroke-width="0.6" opacity="0.5"/>`;
+      }
+    }
+    if (pos >= 12) {
+      // A5 and above
+      for (let lp = 12; lp <= pos; lp += 2) {
+        const ly = posToY(lp);
+        svg += `<line x1="${nx - 8}" y1="${ly}" x2="${nx + 8}" y2="${ly}" stroke="var(--text-dim)" stroke-width="0.6" opacity="0.5"/>`;
+      }
+    }
+
+    // Note head (tilted ellipse)
+    svg += `<ellipse cx="${nx}" cy="${y}" rx="${RX}" ry="${RY}" fill="var(--text)" transform="rotate(-15 ${nx} ${y})"/>`;
+
+    // Accidental
+    if (acc) {
+      svg += `<text x="${nx - 9}" y="${y + 4}" font-size="11" fill="var(--text)" text-anchor="end" font-family="serif">${acc}</text>`;
+    }
+  }
+
+  return svg + '</svg>';
+}
+
+function renderStaffNotation(item) {
+  if (!staffDisplay) return;
+  if (!item || !state.showStaff || state.earMode) {
+    staffDisplay.style.opacity = '0';
+    return;
+  }
+  const root = item.root + (item.acc === '#' ? '#' : item.acc === 'b' ? 'b' : '');
+  const rootPC = NOTE_TO_SEMITONE[root] ?? 0;
+
+  let midiNotes;
+  if (state.mode === 'chord' && item.chord) {
+    const ct = CHORD_TYPES.find(c => c.val === item.chord);
+    if (!ct) { staffDisplay.style.opacity = '0'; return; }
+    midiNotes = getVoicingMidi(rootPC, ct.intervals, state.currentInversion);
+  } else {
+    midiNotes = [60 + rootPC];
+  }
+  staffDisplay.innerHTML = buildStaffSVG(midiNotes, item);
+  staffDisplay.style.opacity = '1';
+}
 
 function renderPianoVoicing(item) {
   if (!pianoDisplay) return;
@@ -2174,7 +2284,7 @@ function renderDisplay(item, animate = true) {
         chordQuality.textContent   = '';
         chordQuality.style.opacity = '0';
       }
-      if (!state.earMode) { renderIntervalDisplay(item); renderPianoVoicing(item); renderInversionLabel(item); }
+      if (!state.earMode) { renderIntervalDisplay(item); renderPianoVoicing(item); renderInversionLabel(item); renderStaffNotation(item); }
     }, 140);
   } else {
     noteDisplay.innerHTML = displayInner;
@@ -2186,7 +2296,7 @@ function renderDisplay(item, animate = true) {
       chordQuality.textContent   = '';
       chordQuality.style.opacity = '0';
     }
-    if (!state.earMode) { renderIntervalDisplay(item); renderPianoVoicing(item); renderInversionLabel(item); }
+    if (!state.earMode) { renderIntervalDisplay(item); renderPianoVoicing(item); renderInversionLabel(item); renderStaffNotation(item); }
   }
 
   setFeedbackState('neutral');
@@ -2545,6 +2655,8 @@ function syncToggles() {
   if (th) th.classList.toggle('on', state.twoHandMode);
   const mn = document.getElementById('showMidiNotesToggle');
   if (mn) mn.classList.toggle('on', state.showMidiNotes);
+  const st = document.getElementById('showStaffToggle');
+  if (st) st.classList.toggle('on', state.showStaff);
   if (midiLowSlider) {
     const octave = state.midiMinNote > 0 ? Math.round((state.midiMinNote - 24) / 12) : 0;
     midiLowSlider.value = octave;
@@ -2597,6 +2709,7 @@ document.addEventListener('click', e => {
       }
       renderPianoVoicing(cur);
       renderInversionLabel(cur);
+      renderStaffNotation(cur);
     }
     saveSettings();
   } else if (key === 'showAvgTime') {
@@ -2632,6 +2745,12 @@ document.addEventListener('click', e => {
     state.showMidiNotes = !state.showMidiNotes;
     tog.classList.toggle('on', state.showMidiNotes);
     if (midiNoteDisplay && !state.showMidiNotes) midiNoteDisplay.textContent = '';
+    saveSettings();
+  } else if (key === 'showStaff') {
+    state.showStaff = !state.showStaff;
+    tog.classList.toggle('on', state.showStaff);
+    const cur = history[histIdx];
+    if (cur) renderStaffNotation(cur);
     saveSettings();
   }
 });
@@ -2810,6 +2929,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   state.showInversions = false;
   state.currentInversion = 0;
   state.showDiagram = true;
+  state.showStaff = true;
   state.showScaleDegrees = true;
   state.showAvgTime = false;
   state.untimedMode = false;

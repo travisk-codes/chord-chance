@@ -962,6 +962,15 @@ kbd {
   z-index: 1;
 }
 
+.staff-display {
+  margin-top: 8px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  position: relative;
+  z-index: 1;
+}
+.staff-display svg { display: block; margin: 0 auto; }
+
 /* ── MIDI NOTE DISPLAY ── */
 .midi-note-display {
   font-size: 11px;

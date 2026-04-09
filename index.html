@@ -18,7 +18,7 @@
 
 <header>
   <div class="logo-wrap">
-    <div class="logo">Chord Chance<span class="app-version">v4.3.3</span></div>
+    <div class="logo">Chord Chance<span class="app-version">v4.4.0</span></div>
     <div class="session-row">
       <div id="sessionStatus" class="session-status">⏸ 0:00</div>
       <button class="session-reset-btn" id="sessionResetBtn" title="Reset timer">↺</button>
@@ -94,6 +94,7 @@
     <div class="interval-display" id="intervalDisplay"></div>
   </div>
   <div class="piano-display" id="pianoDisplay"></div>
+  <div class="staff-display" id="staffDisplay"></div>
   <div class="feedback-label" id="feedbackLabel"></div>
   <div class="midi-note-display" id="midiNoteDisplay"></div>
   <div class="ear-choices" id="earChoices"></div>
@@ -268,6 +269,15 @@
             <div class="toggle-desc">Piano voicing diagram below chord name</div>
           </div>
           <div class="setting-toggle on" id="showDiagramToggle" data-key="showDiagram">
+            <div class="toggle-thumb"></div>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Staff notation</div>
+            <div class="toggle-desc">Show notes on a treble clef staff</div>
+          </div>
+          <div class="setting-toggle on" id="showStaffToggle" data-key="showStaff">
             <div class="toggle-thumb"></div>
           </div>
         </div>
