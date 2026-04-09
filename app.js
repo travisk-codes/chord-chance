@@ -153,6 +153,7 @@ const state = {
   twoHandMode: false,
   showMidiNotes: true,
   showStaff: true,
+  staffNotationMode: false,
 };
 
 function anyInputActive() {
@@ -290,6 +291,7 @@ function saveSettings() {
       twoHandMode:          state.twoHandMode,
       showMidiNotes:        state.showMidiNotes,
       showStaff:            state.showStaff,
+      staffNotationMode:    state.staffNotationMode,
     }));
   } catch(e) {}
 }
@@ -321,6 +323,7 @@ function loadSettings() {
     if (typeof s.twoHandMode === 'boolean')   state.twoHandMode   = s.twoHandMode;
     if (typeof s.showMidiNotes === 'boolean') state.showMidiNotes = s.showMidiNotes;
     if (typeof s.showStaff === 'boolean') state.showStaff = s.showStaff;
+    if (typeof s.staffNotationMode === 'boolean') state.staffNotationMode = s.staffNotationMode;
   } catch(e) {}
 }
 
@@ -1215,12 +1218,12 @@ function midiToStaff(midi, useFlatSpelling) {
   return { pos, acc };
 }
 
-function buildStaffSVG(midiNotes, item) {
-  // Staff geometry
-  const W = 90, H = 70;
-  const STEP = 5;          // px per diatonic half-step
-  const STAFF_BOTTOM = 45; // y of bottom line (E4, pos=2)
-  // Staff lines: E4(pos 2), G4(4), B4(6), D5(8), F5(10)
+function buildStaffSVG(midiNotes, item, large) {
+  // Staff geometry — large version for staff-notation mode, small for secondary display
+  const scale = large ? 2.4 : 1;
+  const W = Math.round(90 * scale), H = Math.round(70 * scale);
+  const STEP = 5 * scale;
+  const STAFF_BOTTOM = Math.round(45 * scale);
   const STAFF_LINES = [2, 4, 6, 8, 10];
   const posToY = pos => STAFF_BOTTOM - (pos - 2) * (STEP / 2);
 
@@ -1231,24 +1234,26 @@ function buildStaffSVG(midiNotes, item) {
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block">`;
 
   // Staff lines
+  const lx1 = Math.round(8 * scale), lx2 = W - Math.round(4 * scale);
   for (const lp of STAFF_LINES) {
     const y = posToY(lp);
-    svg += `<line x1="8" y1="${y}" x2="${W - 4}" y2="${y}" stroke="var(--text-dim)" stroke-width="0.5" opacity="0.5"/>`;
+    svg += `<line x1="${lx1}" y1="${y}" x2="${lx2}" y2="${y}" stroke="var(--text-dim)" stroke-width="${0.5 * scale}" opacity="0.5"/>`;
   }
 
-  // Treble clef (Unicode)
-  const clefY = posToY(4) + 10;
-  svg += `<text x="9" y="${clefY}" font-size="32" fill="var(--text-dim)" opacity="0.6" font-family="serif">𝄞</text>`;
+  // Treble clef (Unicode) — anchor at G4 line (pos 4)
+  const clefFontSize = Math.round(32 * scale);
+  const clefY = posToY(4) + clefFontSize * 0.32;
+  svg += `<text x="${Math.round(9 * scale)}" y="${clefY}" font-size="${clefFontSize}" fill="var(--text-dim)" opacity="0.6" font-family="serif">𝄞</text>`;
 
   // Note heads + accidentals + ledger lines
-  const NX = 55;      // base x for note heads
-  const RX = 5, RY = 3.5; // ellipse radii
+  const NX = Math.round(55 * scale);
+  const RX = 5 * scale, RY = 3.5 * scale;
 
   // Detect seconds (adjacent diatonic positions) for horizontal offset
   const offsets = notes.map(() => 0);
   for (let i = 1; i < notes.length; i++) {
     if (notes[i].pos - notes[i - 1].pos === 1) {
-      offsets[i] = offsets[i - 1] === 0 ? 10 : 0;
+      offsets[i] = offsets[i - 1] === 0 ? Math.round(10 * scale) : 0;
     }
   }
 
@@ -1256,20 +1261,19 @@ function buildStaffSVG(midiNotes, item) {
     const { pos, acc } = notes[i];
     const y = posToY(pos);
     const nx = NX + offsets[i];
+    const ledgerW = Math.round(8 * scale);
 
     // Ledger lines
     if (pos <= 0) {
-      // C4 and below — draw ledger lines at each even position from 0 down
       for (let lp = 0; lp >= pos; lp -= 2) {
         const ly = posToY(lp);
-        svg += `<line x1="${nx - 8}" y1="${ly}" x2="${nx + 8}" y2="${ly}" stroke="var(--text-dim)" stroke-width="0.6" opacity="0.5"/>`;
+        svg += `<line x1="${nx - ledgerW}" y1="${ly}" x2="${nx + ledgerW}" y2="${ly}" stroke="var(--text-dim)" stroke-width="${0.6 * scale}" opacity="0.5"/>`;
       }
     }
     if (pos >= 12) {
-      // A5 and above
       for (let lp = 12; lp <= pos; lp += 2) {
         const ly = posToY(lp);
-        svg += `<line x1="${nx - 8}" y1="${ly}" x2="${nx + 8}" y2="${ly}" stroke="var(--text-dim)" stroke-width="0.6" opacity="0.5"/>`;
+        svg += `<line x1="${nx - ledgerW}" y1="${ly}" x2="${nx + ledgerW}" y2="${ly}" stroke="var(--text-dim)" stroke-width="${0.6 * scale}" opacity="0.5"/>`;
       }
     }
 
@@ -1278,32 +1282,53 @@ function buildStaffSVG(midiNotes, item) {
 
     // Accidental
     if (acc) {
-      svg += `<text x="${nx - 9}" y="${y + 4}" font-size="11" fill="var(--text)" text-anchor="end" font-family="serif">${acc}</text>`;
+      const accSize = Math.round(11 * scale);
+      svg += `<text x="${nx - Math.round(9 * scale)}" y="${y + Math.round(4 * scale)}" font-size="${accSize}" fill="var(--text)" text-anchor="end" font-family="serif">${acc}</text>`;
     }
   }
 
   return svg + '</svg>';
 }
 
-function renderStaffNotation(item) {
-  if (!staffDisplay) return;
-  if (!item || !state.showStaff || state.earMode) {
-    staffDisplay.style.opacity = '0';
-    return;
-  }
+function getStaffMidi(item) {
   const root = item.root + (item.acc === '#' ? '#' : item.acc === 'b' ? 'b' : '');
   const rootPC = NOTE_TO_SEMITONE[root] ?? 0;
-
-  let midiNotes;
   if (state.mode === 'chord' && item.chord) {
     const ct = CHORD_TYPES.find(c => c.val === item.chord);
-    if (!ct) { staffDisplay.style.opacity = '0'; return; }
-    midiNotes = getVoicingMidi(rootPC, ct.intervals, state.currentInversion);
-  } else {
-    midiNotes = [60 + rootPC];
+    if (!ct) return null;
+    return getVoicingMidi(rootPC, ct.intervals, state.currentInversion);
   }
-  staffDisplay.innerHTML = buildStaffSVG(midiNotes, item);
-  staffDisplay.style.opacity = '1';
+  return [60 + rootPC];
+}
+
+function renderStaffNotation(item) {
+  // Secondary small staff below piano display
+  if (staffDisplay) {
+    if (!item || !state.showStaff || state.staffNotationMode || state.earMode) {
+      staffDisplay.style.opacity = '0';
+    } else {
+      const midi = getStaffMidi(item);
+      if (!midi) { staffDisplay.style.opacity = '0'; }
+      else {
+        staffDisplay.innerHTML = buildStaffSVG(midi, item, false);
+        staffDisplay.style.opacity = '1';
+      }
+    }
+  }
+
+  // Staff notation mode — large staff replaces note name
+  if (state.staffNotationMode && !state.earMode && item) {
+    noteDisplay.style.display = 'none';
+    staffDisplay.classList.add('staff-large');
+    const midi = getStaffMidi(item);
+    if (midi) {
+      staffDisplay.innerHTML = buildStaffSVG(midi, item, true);
+      staffDisplay.style.opacity = '1';
+    }
+  } else {
+    noteDisplay.style.display = '';
+    staffDisplay.classList.remove('staff-large');
+  }
 }
 
 function renderPianoVoicing(item) {
@@ -2272,7 +2297,7 @@ function renderDisplay(item, animate = true) {
       void noteDisplay.offsetWidth;
       noteDisplay.classList.add('flash-in');
 
-      if (!state.earMode && state.mode === 'chord' && item.chord !== null) {
+      if (!state.earMode && !state.staffNotationMode && state.mode === 'chord' && item.chord !== null) {
         const ct = CHORD_TYPES.find(c => c.val === item.chord);
         chordQuality.style.opacity   = 0;
         chordQuality.textContent     = ct ? ct.label : '';
@@ -2288,7 +2313,7 @@ function renderDisplay(item, animate = true) {
     }, 140);
   } else {
     noteDisplay.innerHTML = displayInner;
-    if (!state.earMode && state.mode === 'chord' && item.chord !== null) {
+    if (!state.earMode && !state.staffNotationMode && state.mode === 'chord' && item.chord !== null) {
       const ct = CHORD_TYPES.find(c => c.val === item.chord);
       chordQuality.textContent   = ct ? ct.label : '';
       chordQuality.style.opacity = '1';
@@ -2657,6 +2682,8 @@ function syncToggles() {
   if (mn) mn.classList.toggle('on', state.showMidiNotes);
   const st = document.getElementById('showStaffToggle');
   if (st) st.classList.toggle('on', state.showStaff);
+  const snm = document.getElementById('staffNotationModeToggle');
+  if (snm) snm.classList.toggle('on', state.staffNotationMode);
   if (midiLowSlider) {
     const octave = state.midiMinNote > 0 ? Math.round((state.midiMinNote - 24) / 12) : 0;
     midiLowSlider.value = octave;
@@ -2751,6 +2778,22 @@ document.addEventListener('click', e => {
     tog.classList.toggle('on', state.showStaff);
     const cur = history[histIdx];
     if (cur) renderStaffNotation(cur);
+    saveSettings();
+  } else if (key === 'staffNotationMode') {
+    state.staffNotationMode = !state.staffNotationMode;
+    tog.classList.toggle('on', state.staffNotationMode);
+    const cur = history[histIdx];
+    if (cur) {
+      renderStaffNotation(cur);
+      // Hide/show chord quality text
+      if (state.staffNotationMode) {
+        chordQuality.style.opacity = '0';
+      } else if (state.mode === 'chord' && cur.chord) {
+        const ct = CHORD_TYPES.find(c => c.val === cur.chord);
+        chordQuality.textContent = ct ? ct.label : '';
+        chordQuality.style.opacity = '1';
+      }
+    }
     saveSettings();
   }
 });
@@ -2930,6 +2973,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   state.currentInversion = 0;
   state.showDiagram = true;
   state.showStaff = true;
+  state.staffNotationMode = false;
   state.showScaleDegrees = true;
   state.showAvgTime = false;
   state.untimedMode = false;

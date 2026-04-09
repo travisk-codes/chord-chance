@@ -970,6 +970,7 @@ kbd {
   z-index: 1;
 }
 .staff-display svg { display: block; margin: 0 auto; }
+.staff-display.staff-large svg { width: min(90vw, 320px); height: auto; }
 
 /* ── MIDI NOTE DISPLAY ── */
 .midi-note-display {
