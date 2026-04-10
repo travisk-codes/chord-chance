@@ -1229,7 +1229,7 @@ function getStaffMidi(item) {
 }
 
 function renderVexStaff(container, midiNotes, item, width) {
-  const VF = typeof Vex !== 'undefined' ? Vex.Flow : null;
+  const VF = typeof VexFlow !== 'undefined' ? VexFlow : (typeof Vex !== 'undefined' ? Vex.Flow : null);
   if (!VF) return;
   container.innerHTML = '';
 
