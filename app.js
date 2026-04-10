@@ -1233,41 +1233,75 @@ function renderVexStaff(container, midiNotes, item, width) {
   if (!VF) return;
   container.innerHTML = '';
 
-  const height = Math.round(width * 0.55);
-  const renderer = new VF.Renderer(container, VF.Renderer.Backends.SVG);
-  renderer.resize(width, height);
-  const ctx = renderer.getContext();
-
-  // Style: use app's CSS variable colors
+  const useFlatSpelling = item.acc === 'b';
   const style = getComputedStyle(document.documentElement);
   const textColor = style.getPropertyValue('--text').trim();
   const dimColor = style.getPropertyValue('--text-dim').trim();
 
+  const grandStaff = state.twoHandMode && state.mode === 'chord';
+
+  // Split notes for grand staff: bass < 60 (middle C), treble >= 60
+  let trebleNotes, bassNotes;
+  if (grandStaff) {
+    // In two-hand mode, show chord in both octaves
+    const root = item.root + (item.acc === '#' ? '#' : item.acc === 'b' ? 'b' : '');
+    const rootPC = NOTE_TO_SEMITONE[root] ?? 0;
+    const ct = item.chord ? CHORD_TYPES.find(c => c.val === item.chord) : null;
+    if (ct) {
+      // Treble: chord at C4 octave (MIDI 60+)
+      trebleNotes = ct.intervals.map(i => 60 + rootPC + i);
+      // Bass: chord one octave lower (MIDI 48+)
+      bassNotes = ct.intervals.map(i => 48 + rootPC + i);
+    } else {
+      trebleNotes = midiNotes;
+      bassNotes = midiNotes.map(m => m - 12);
+    }
+  } else {
+    trebleNotes = midiNotes;
+  }
+
+  const staveHeight = grandStaff ? 80 : 80;
+  const height = grandStaff ? 180 : 100;
+  const renderer = new VF.Renderer(container, VF.Renderer.Backends.SVG);
+  renderer.resize(width, height);
+  const ctx = renderer.getContext();
   ctx.setFillStyle(textColor);
   ctx.setStrokeStyle(dimColor);
 
-  const stave = new VF.Stave(0, 0, width - 1);
-  stave.addClef('treble');
-  stave.setStyle({ fillStyle: dimColor, strokeStyle: dimColor });
-  stave.setContext(ctx).draw();
+  function drawStaveWithNotes(clef, notes, yPos) {
+    const stave = new VF.Stave(0, yPos, width - 1);
+    stave.addClef(clef);
+    stave.setStyle({ fillStyle: dimColor, strokeStyle: dimColor });
+    stave.setContext(ctx).draw();
 
-  const useFlatSpelling = item.acc === 'b';
-  const keys = midiNotes.map(m => midiToVexKey(m, useFlatSpelling));
-  const note = new VF.StaveNote({ keys, duration: 'w', clef: 'treble' });
-  note.setStyle({ fillStyle: textColor, strokeStyle: textColor });
+    const keys = notes.map(m => midiToVexKey(m, useFlatSpelling));
+    const note = new VF.StaveNote({ keys, duration: 'q', clef });
+    note.setStyle({ fillStyle: textColor, strokeStyle: textColor });
 
-  // Add accidentals
-  keys.forEach((key, i) => {
-    const name = key.split('/')[0];
-    if (name.includes('#')) note.addModifier(new VF.Accidental('#'), i);
-    else if (name.includes('b') && name !== 'b') note.addModifier(new VF.Accidental('b'), i);
-  });
+    keys.forEach((key, i) => {
+      const name = key.split('/')[0];
+      if (name.includes('#')) note.addModifier(new VF.Accidental('#'), i);
+      else if (name.includes('b') && name !== 'b') note.addModifier(new VF.Accidental('b'), i);
+    });
 
-  const voice = new VF.Voice({ num_beats: 4, beat_value: 4 }).setStrict(false);
-  voice.addTickable(note);
+    const voice = new VF.Voice({ num_beats: 1, beat_value: 4 }).setStrict(false);
+    voice.addTickable(note);
+    new VF.Formatter().joinVoices([voice]).format([voice], width * 0.35);
+    voice.draw(ctx, stave);
+  }
 
-  new VF.Formatter().joinVoices([voice]).format([voice], width * 0.4);
-  voice.draw(ctx, stave);
+  drawStaveWithNotes('treble', trebleNotes, grandStaff ? 0 : 0);
+
+  if (grandStaff) {
+    drawStaveWithNotes('bass', bassNotes, 90);
+    // Brace / connector
+    const trebleStave = new VF.Stave(0, 0, width - 1);
+    const bassStave = new VF.Stave(0, 90, width - 1);
+    const connector = new VF.StaveConnector(trebleStave, bassStave);
+    connector.setType(VF.StaveConnector.type.BRACE);
+    connector.setStyle({ fillStyle: dimColor, strokeStyle: dimColor });
+    connector.setContext(ctx).draw();
+  }
 }
 
 function renderStaffNotation(item) {
@@ -1294,7 +1328,8 @@ function renderStaffNotation(item) {
   if (showLarge) {
     noteDisplay.style.display = 'none';
     staffDisplay.classList.add('staff-large');
-    renderVexStaff(staffDisplay, midi, item, 260);
+    const w = (state.twoHandMode && state.mode === 'chord') ? 280 : 260;
+    renderVexStaff(staffDisplay, midi, item, w);
     staffDisplay.style.opacity = '1';
   } else {
     noteDisplay.style.display = '';
