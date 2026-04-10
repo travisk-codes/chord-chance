@@ -1147,7 +1147,8 @@ const summaryBtn        = document.getElementById('summaryBtn');
 // ─── GLOW POSITION ─────────────────────────────────────────────────────────
 
 function updateGlowPosition() {
-  const rect = noteDisplay.getBoundingClientRect();
+  const target = (state.staffNotationMode && !state.earMode) ? staffDisplay : noteDisplay;
+  const rect = target.getBoundingClientRect();
   glowOrb.style.top  = (rect.top  + rect.height / 2) + 'px';
   glowOrb.style.left = (rect.left + rect.width  / 2) + 'px';
 }
@@ -1240,14 +1241,14 @@ function buildStaffSVG(midiNotes, item, large) {
     svg += `<line x1="${lx1}" y1="${y}" x2="${lx2}" y2="${y}" stroke="var(--text-dim)" stroke-width="${0.5 * scale}" opacity="0.5"/>`;
   }
 
-  // Treble clef (Unicode) — anchor at G4 line (pos 4)
+  // Treble clef (Unicode) — the curl of 𝄞 sits on G4 (pos 4)
   const clefFontSize = Math.round(32 * scale);
-  const clefY = posToY(4) + clefFontSize * 0.32;
+  const clefY = posToY(4) + clefFontSize * 0.22;
   svg += `<text x="${Math.round(9 * scale)}" y="${clefY}" font-size="${clefFontSize}" fill="var(--text-dim)" opacity="0.6" font-family="serif">𝄞</text>`;
 
   // Note heads + accidentals + ledger lines
   const NX = Math.round(55 * scale);
-  const RX = 5 * scale, RY = 3.5 * scale;
+  const RX = 4 * scale, RY = 2.8 * scale;
 
   // Detect seconds (adjacent diatonic positions) for horizontal offset
   const offsets = notes.map(() => 0);
@@ -1354,7 +1355,7 @@ function renderPianoVoicing(item) {
 
 function renderInversionLabel(item) {
   if (!invDisplay) return;
-  if (!item || state.mode !== 'chord' || !item.chord || !state.showInversions) {
+  if (!item || state.mode !== 'chord' || !item.chord || !state.showInversions || state.staffNotationMode) {
     invDisplay.textContent = '';
     return;
   }
