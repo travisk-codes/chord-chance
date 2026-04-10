@@ -968,9 +968,10 @@ kbd {
   transition: opacity 0.3s;
   position: relative;
   z-index: 1;
+  display: flex;
+  justify-content: center;
 }
-.staff-display svg { display: block; margin: 0 auto; }
-.staff-display.staff-large svg { width: min(90vw, 320px); height: auto; }
+.staff-display svg { display: block; }
 
 /* ── MIDI NOTE DISPLAY ── */
 .midi-note-display {

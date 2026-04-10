@@ -101,9 +101,9 @@ const NOTE_TO_SEMITONE = {
 
 const SEMITONE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
-// Staff notation: pitch-class → [diatonicStep, accidental] (sharp vs flat spelling)
-const PC_SHARP = [[0,''],[0,'♯'],[1,''],[1,'♯'],[2,''],[3,''],[3,'♯'],[4,''],[4,'♯'],[5,''],[5,'♯'],[6,'']];
-const PC_FLAT  = [[0,''],[1,'♭'],[1,''],[2,'♭'],[2,''],[3,''],[4,'♭'],[4,''],[5,'♭'],[5,''],[6,'♭'],[6,'']];
+// Staff notation: MIDI pitch-class → VexFlow note key (sharp / flat spelling)
+const VEX_SHARP = ['c','c#','d','d#','e','f','f#','g','g#','a','a#','b'];
+const VEX_FLAT  = ['c','db','d','eb','e','f','gb','g','ab','a','bb','b'];
 
 // Interval semitone → display name
 const INTERVAL_LABEL = {
@@ -1208,87 +1208,13 @@ function getVoicingMidi(rootPC, intervals, inversion) {
 
 const INV_LABELS = ['Root pos.', '1st inv.', '2nd inv.', '3rd inv.'];
 
-// ─── STAFF NOTATION ───────────────────────────────────────────────────────
+// ─── STAFF NOTATION (VexFlow) ─────────────────────────────────────────────
 
-function midiToStaff(midi, useFlatSpelling) {
+function midiToVexKey(midi, useFlatSpelling) {
   const pc = midi % 12;
   const octave = Math.floor(midi / 12) - 1;
-  const table = useFlatSpelling ? PC_FLAT : PC_SHARP;
-  const [diatonic, acc] = table[pc];
-  const pos = (octave - 4) * 7 + diatonic; // 0 = C4 (middle C)
-  return { pos, acc };
-}
-
-function buildStaffSVG(midiNotes, item, large) {
-  // Staff geometry — large version for staff-notation mode, small for secondary display
-  const scale = large ? 2.4 : 1;
-  const W = Math.round(90 * scale), H = Math.round(70 * scale);
-  const STEP = 5 * scale;
-  const STAFF_BOTTOM = Math.round(45 * scale);
-  const STAFF_LINES = [2, 4, 6, 8, 10];
-  const posToY = pos => STAFF_BOTTOM - (pos - 2) * (STEP / 2);
-
-  const useFlatSpelling = item.acc === 'b';
-  const notes = midiNotes.map(m => ({ midi: m, ...midiToStaff(m, useFlatSpelling) }))
-    .sort((a, b) => a.pos - b.pos);
-
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block">`;
-
-  // Staff lines
-  const lx1 = Math.round(8 * scale), lx2 = W - Math.round(4 * scale);
-  for (const lp of STAFF_LINES) {
-    const y = posToY(lp);
-    svg += `<line x1="${lx1}" y1="${y}" x2="${lx2}" y2="${y}" stroke="var(--text-dim)" stroke-width="${0.5 * scale}" opacity="0.5"/>`;
-  }
-
-  // Treble clef (Unicode) — the curl of 𝄞 sits on G4 (pos 4)
-  const clefFontSize = Math.round(32 * scale);
-  const clefY = posToY(4) + clefFontSize * 0.22;
-  svg += `<text x="${Math.round(9 * scale)}" y="${clefY}" font-size="${clefFontSize}" fill="var(--text-dim)" opacity="0.6" font-family="serif">𝄞</text>`;
-
-  // Note heads + accidentals + ledger lines
-  const NX = Math.round(55 * scale);
-  const RX = 4 * scale, RY = 2.8 * scale;
-
-  // Detect seconds (adjacent diatonic positions) for horizontal offset
-  const offsets = notes.map(() => 0);
-  for (let i = 1; i < notes.length; i++) {
-    if (notes[i].pos - notes[i - 1].pos === 1) {
-      offsets[i] = offsets[i - 1] === 0 ? Math.round(10 * scale) : 0;
-    }
-  }
-
-  for (let i = 0; i < notes.length; i++) {
-    const { pos, acc } = notes[i];
-    const y = posToY(pos);
-    const nx = NX + offsets[i];
-    const ledgerW = Math.round(8 * scale);
-
-    // Ledger lines
-    if (pos <= 0) {
-      for (let lp = 0; lp >= pos; lp -= 2) {
-        const ly = posToY(lp);
-        svg += `<line x1="${nx - ledgerW}" y1="${ly}" x2="${nx + ledgerW}" y2="${ly}" stroke="var(--text-dim)" stroke-width="${0.6 * scale}" opacity="0.5"/>`;
-      }
-    }
-    if (pos >= 12) {
-      for (let lp = 12; lp <= pos; lp += 2) {
-        const ly = posToY(lp);
-        svg += `<line x1="${nx - ledgerW}" y1="${ly}" x2="${nx + ledgerW}" y2="${ly}" stroke="var(--text-dim)" stroke-width="${0.6 * scale}" opacity="0.5"/>`;
-      }
-    }
-
-    // Note head (tilted ellipse)
-    svg += `<ellipse cx="${nx}" cy="${y}" rx="${RX}" ry="${RY}" fill="var(--text)" transform="rotate(-15 ${nx} ${y})"/>`;
-
-    // Accidental
-    if (acc) {
-      const accSize = Math.round(11 * scale);
-      svg += `<text x="${nx - Math.round(9 * scale)}" y="${y + Math.round(4 * scale)}" font-size="${accSize}" fill="var(--text)" text-anchor="end" font-family="serif">${acc}</text>`;
-    }
-  }
-
-  return svg + '</svg>';
+  const table = useFlatSpelling ? VEX_FLAT : VEX_SHARP;
+  return `${table[pc]}/${octave}`;
 }
 
 function getStaffMidi(item) {
@@ -1302,33 +1228,79 @@ function getStaffMidi(item) {
   return [60 + rootPC];
 }
 
+function renderVexStaff(container, midiNotes, item, width) {
+  const VF = typeof Vex !== 'undefined' ? Vex.Flow : null;
+  if (!VF) return;
+  container.innerHTML = '';
+
+  const height = Math.round(width * 0.55);
+  const renderer = new VF.Renderer(container, VF.Renderer.Backends.SVG);
+  renderer.resize(width, height);
+  const ctx = renderer.getContext();
+
+  // Style: use app's CSS variable colors
+  const style = getComputedStyle(document.documentElement);
+  const textColor = style.getPropertyValue('--text').trim();
+  const dimColor = style.getPropertyValue('--text-dim').trim();
+
+  ctx.setFillStyle(textColor);
+  ctx.setStrokeStyle(dimColor);
+
+  const stave = new VF.Stave(0, 0, width - 1);
+  stave.addClef('treble');
+  stave.setStyle({ fillStyle: dimColor, strokeStyle: dimColor });
+  stave.setContext(ctx).draw();
+
+  const useFlatSpelling = item.acc === 'b';
+  const keys = midiNotes.map(m => midiToVexKey(m, useFlatSpelling));
+  const note = new VF.StaveNote({ keys, duration: 'w', clef: 'treble' });
+  note.setStyle({ fillStyle: textColor, strokeStyle: textColor });
+
+  // Add accidentals
+  keys.forEach((key, i) => {
+    const name = key.split('/')[0];
+    if (name.includes('#')) note.addModifier(new VF.Accidental('#'), i);
+    else if (name.includes('b') && name !== 'b') note.addModifier(new VF.Accidental('b'), i);
+  });
+
+  const voice = new VF.Voice({ num_beats: 4, beat_value: 4 }).setStrict(false);
+  voice.addTickable(note);
+
+  new VF.Formatter().joinVoices([voice]).format([voice], width * 0.4);
+  voice.draw(ctx, stave);
+}
+
 function renderStaffNotation(item) {
-  // Secondary small staff below piano display
-  if (staffDisplay) {
-    if (!item || !state.showStaff || state.staffNotationMode || state.earMode) {
-      staffDisplay.style.opacity = '0';
-    } else {
-      const midi = getStaffMidi(item);
-      if (!midi) { staffDisplay.style.opacity = '0'; }
-      else {
-        staffDisplay.innerHTML = buildStaffSVG(midi, item, false);
-        staffDisplay.style.opacity = '1';
-      }
-    }
+  if (!staffDisplay) return;
+
+  // Decide visibility
+  const showSmall = item && state.showStaff && !state.staffNotationMode && !state.earMode;
+  const showLarge = item && state.staffNotationMode && !state.earMode;
+
+  if (!showSmall && !showLarge) {
+    staffDisplay.style.opacity = '0';
+    staffDisplay.classList.remove('staff-large');
+    noteDisplay.style.display = '';
+    return;
   }
 
-  // Staff notation mode — large staff replaces note name
-  if (state.staffNotationMode && !state.earMode && item) {
+  const midi = getStaffMidi(item);
+  if (!midi) {
+    staffDisplay.style.opacity = '0';
+    noteDisplay.style.display = '';
+    return;
+  }
+
+  if (showLarge) {
     noteDisplay.style.display = 'none';
     staffDisplay.classList.add('staff-large');
-    const midi = getStaffMidi(item);
-    if (midi) {
-      staffDisplay.innerHTML = buildStaffSVG(midi, item, true);
-      staffDisplay.style.opacity = '1';
-    }
+    renderVexStaff(staffDisplay, midi, item, 260);
+    staffDisplay.style.opacity = '1';
   } else {
     noteDisplay.style.display = '';
     staffDisplay.classList.remove('staff-large');
+    renderVexStaff(staffDisplay, midi, item, 150);
+    staffDisplay.style.opacity = '1';
   }
 }
 
